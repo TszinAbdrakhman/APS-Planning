@@ -881,6 +881,8 @@ function renderSupTplList(type, elId){
         <button class="icon-btn" onclick="cancelEditSupTplStep()">✕</button></div>`;
     }
     return `<div class="tpl-step"><span class="num">${i+1}.</span><span class="txt">${escapeHtml(s.text)}</span>
+      <button class="icon-btn" ${i===0?'disabled':''} onclick="moveSupTplStep('${type}','${s.id}',-1)" title="Выше">↑</button>
+      <button class="icon-btn" ${i===steps.length-1?'disabled':''} onclick="moveSupTplStep('${type}','${s.id}',1)" title="Ниже">↓</button>
       <button class="icon-btn" onclick="startEditSupTplStep('${s.id}')" title="Редактировать">✎</button>
       <button class="icon-btn" onclick="removeSupTplStep('${type}','${s.id}')">✕</button></div>`;
   }).join('');
@@ -899,6 +901,21 @@ function renderSupTplList(type, elId){
 function startEditSupTplStep(stepId){
   editingStepId = stepId;
   renderSupTemplates();
+}
+async function moveSupTplStep(type, stepId, dir){
+  const arr = currentSupplier.templates[type];
+  const idx = arr.findIndex(s=>s.id===stepId);
+  const newIdx = idx + dir;
+  if(newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  try{
+    const {error:e1} = await sb.from('checklist_templates').update({step_order: idx+1}).eq('id', arr[idx].id);
+    if(e1) throw e1;
+    const {error:e2} = await sb.from('checklist_templates').update({step_order: newIdx+1}).eq('id', arr[newIdx].id);
+    if(e2) throw e2;
+    renderSupTemplates();
+    renderSupCars();
+  }catch(e){ alert('Не удалось изменить порядок: '+e.message); }
 }
 function cancelEditSupTplStep(){
   editingStepId = null;
