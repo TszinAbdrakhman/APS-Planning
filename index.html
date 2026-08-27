@@ -136,6 +136,7 @@
   .tpl-step{display:flex; align-items:center; gap:8px; font-size:13px;}
   .tpl-step .num{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--muted); width:18px; flex-shrink:0;}
   .tpl-step .txt{flex:1;}
+  .tpl-edit-input{flex:1; font-size:13px; padding:4px 8px;}
   .tpl-add-row{display:flex; gap:6px;}
   .tpl-add-row input{flex:1;}
   .car-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:14px;}
@@ -863,6 +864,7 @@ function renderSupTasks(){
 }
 
 /* --- supplier templates --- */
+let editingStepId = null;
 function renderSupTemplates(){
   renderSupTplList('own','supTplStepsOwn');
   renderSupTplList('contracted','supTplStepsContracted');
@@ -871,8 +873,50 @@ function renderSupTplList(type, elId){
   const el = document.getElementById(elId);
   const steps = currentSupplier.templates[type];
   if(steps.length===0){ el.innerHTML=`<div class="empty" style="padding:12px 0;">Нет шагов</div>`; return; }
-  el.innerHTML = steps.map((s,i)=>`<div class="tpl-step"><span class="num">${i+1}.</span><span class="txt">${escapeHtml(s.text)}</span>
-    <button class="icon-btn" onclick="removeSupTplStep('${type}','${s.id}')">✕</button></div>`).join('');
+  el.innerHTML = steps.map((s,i)=>{
+    if(s.id === editingStepId){
+      return `<div class="tpl-step"><span class="num">${i+1}.</span>
+        <input type="text" class="tpl-edit-input" id="tplEdit_${s.id}" value="${escapeHtml(s.text)}">
+        <button class="icon-btn" style="color:var(--sage)" onclick="saveSupTplStep('${type}','${s.id}')">✓</button>
+        <button class="icon-btn" onclick="cancelEditSupTplStep()">✕</button></div>`;
+    }
+    return `<div class="tpl-step"><span class="num">${i+1}.</span><span class="txt">${escapeHtml(s.text)}</span>
+      <button class="icon-btn" onclick="startEditSupTplStep('${s.id}')" title="Редактировать">✎</button>
+      <button class="icon-btn" onclick="removeSupTplStep('${type}','${s.id}')">✕</button></div>`;
+  }).join('');
+  if(editingStepId){
+    const inp = document.getElementById('tplEdit_'+editingStepId);
+    if(inp){
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+      inp.addEventListener('keydown', e=>{
+        if(e.key==='Enter') saveSupTplStep(type, editingStepId);
+        if(e.key==='Escape') cancelEditSupTplStep();
+      });
+    }
+  }
+}
+function startEditSupTplStep(stepId){
+  editingStepId = stepId;
+  renderSupTemplates();
+}
+function cancelEditSupTplStep(){
+  editingStepId = null;
+  renderSupTemplates();
+}
+async function saveSupTplStep(type, stepId){
+  const inp = document.getElementById('tplEdit_'+stepId);
+  const newText = inp.value.trim();
+  if(!newText){ return; }
+  try{
+    const {error} = await sb.from('checklist_templates').update({text:newText}).eq('id', stepId);
+    if(error) throw error;
+    const step = currentSupplier.templates[type].find(s=>s.id===stepId);
+    step.text = newText;
+    editingStepId = null;
+    renderSupTemplates();
+    renderSupCars();
+  }catch(e){ alert('Не удалось сохранить: '+e.message); }
 }
 async function addSupTplStep(type){
   const inputId = type==='own' ? 'supTplInputOwn' : 'supTplInputContracted';
