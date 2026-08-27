@@ -9,132 +9,77 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --ink:#1B1F3B;
-    --paper:#EDEEF0;
-    --card:#FFFFFF;
-    --amber:#E8A33D;
-    --sage:#5C8374;
-    --rust:#B23A48;
-    --line:#D7D8DE;
-    --muted:#6C7080;
+    --ink:#1B1F3B; --paper:#EDEEF0; --card:#FFFFFF;
+    --amber:#E8A33D; --sage:#5C8374; --rust:#B23A48;
+    --line:#D7D8DE; --muted:#6C7080;
   }
   *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:var(--paper);
-    color:var(--ink);
-    font-family:'IBM Plex Sans', sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:'IBM Plex Sans', sans-serif; -webkit-font-smoothing:antialiased;}
   h1,h2,h3{font-family:'Space Grotesk', sans-serif; margin:0;}
   .mono{font-family:'IBM Plex Mono', monospace;}
-
   .app{max-width:1100px; margin:0 auto; padding:28px 20px 80px;}
-
-  .header{
-    display:flex; align-items:baseline; justify-content:space-between;
-    margin-bottom:22px; flex-wrap:wrap; gap:8px;
-  }
+  .header{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:8px;}
   .header h1{font-size:26px; font-weight:700; letter-spacing:-0.02em;}
+  .header-right{display:flex; align-items:center; gap:12px;}
   .header .date{font-size:13px; color:var(--muted);}
+  .whoami{font-size:13px; color:var(--muted);}
+  .whoami b{color:var(--ink);}
 
   .tabs{display:flex; gap:4px; margin-bottom:20px; border-bottom:2px solid var(--ink); flex-wrap:wrap;}
-  .tab{
-    padding:10px 16px; cursor:pointer; font-weight:600; font-size:13.5px;
-    color:var(--muted); border:none; background:none; font-family:'Space Grotesk', sans-serif;
-    position:relative; top:2px; display:flex; align-items:center; gap:6px;
-  }
+  .tab{padding:10px 16px; cursor:pointer; font-weight:600; font-size:13.5px; color:var(--muted); border:none; background:none; font-family:'Space Grotesk', sans-serif; position:relative; top:2px; display:flex; align-items:center; gap:6px;}
   .tab.active{color:var(--ink); border-bottom:2px solid var(--amber); top:2px;}
-  .tab .count{
-    background:var(--rust); color:#fff; font-size:10px; font-weight:700; padding:1px 6px;
-    border-radius:10px; min-width:16px; text-align:center; font-family:'IBM Plex Mono', monospace;
-  }
+  .tab .count{background:var(--rust); color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; min-width:16px; text-align:center; font-family:'IBM Plex Mono', monospace;}
 
   .panel{display:none;}
   .panel.active{display:block; animation:fade .25s ease;}
   @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
-
   .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px;}
 
-  /* ---- SCHEDULE ---- */
   .day-tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
-  .day-tab{
-    padding:6px 12px; border-radius:20px; border:1px solid var(--line); background:var(--card);
-    cursor:pointer; font-size:13px; font-weight:500; color:var(--muted);
-  }
+  .day-tab{padding:6px 12px; border-radius:20px; border:1px solid var(--line); background:var(--card); cursor:pointer; font-size:13px; font-weight:500; color:var(--muted);}
   .day-tab.active{background:var(--ink); color:#fff; border-color:var(--ink);}
   .day-tab.today::after{content:'•'; color:var(--amber); margin-left:4px;}
-
   .rail-wrap{display:flex; gap:0; position:relative;}
   .rail-hours{width:56px; flex-shrink:0;}
-  .rail-hour{
-    height:52px; font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted);
-    text-align:right; padding-right:10px; position:relative; top:-6px;
-  }
-  .rail-track{
-    flex:1; position:relative; border-left:2px solid var(--line);
-  }
-  .rail-slot{
-    height:52px; border-bottom:1px dashed var(--line); cursor:pointer;
-  }
+  .rail-hour{height:52px; font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); text-align:right; padding-right:10px; position:relative; top:-6px;}
+  .rail-track{flex:1; position:relative; border-left:2px solid var(--line);}
+  .rail-slot{height:52px; border-bottom:1px dashed var(--line); cursor:pointer;}
   .rail-slot:hover{background:rgba(232,163,61,0.08);}
-  .rail-block{
-    position:absolute; left:8px; right:8px; border-radius:6px; padding:6px 10px;
-    color:#fff; font-size:12.5px; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15);
-  }
+  .rail-block{position:absolute; left:8px; right:8px; border-radius:6px; padding:6px 10px; color:#fff; font-size:12.5px; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15);}
   .rail-block .t{font-family:'IBM Plex Mono', monospace; font-size:10.5px; opacity:.85;}
-  .now-line{
-    position:absolute; left:0; right:0; height:2px; background:var(--rust); z-index:5;
-  }
-  .now-line::before{
-    content:''; position:absolute; left:-5px; top:-4px; width:10px; height:10px; border-radius:50%; background:var(--rust);
-  }
-
+  .now-line{position:absolute; left:0; right:0; height:2px; background:var(--rust); z-index:5;}
+  .now-line::before{content:''; position:absolute; left:-5px; top:-4px; width:10px; height:10px; border-radius:50%; background:var(--rust);}
   .legend{display:flex; gap:14px; margin-top:14px; flex-wrap:wrap;}
   .legend span{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted);}
   .dot{width:10px; height:10px; border-radius:3px; display:inline-block;}
 
-  /* ---- FORMS ---- */
   .form-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; align-items:center;}
-  input[type=text], input[type=date], input[type=time], select{
-    font-family:'IBM Plex Sans', sans-serif; font-size:13px; padding:8px 10px;
-    border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink);
+  input[type=text], input[type=date], input[type=time], input[type=password], select{
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink);
   }
   input:focus, select:focus{outline:2px solid var(--amber); outline-offset:1px;}
-  button{
-    font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:13px;
-    padding:8px 16px; border-radius:6px; border:none; cursor:pointer;
-    background:var(--ink); color:#fff; white-space:nowrap;
-  }
+  button{font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:13px; padding:8px 16px; border-radius:6px; border:none; cursor:pointer; background:var(--ink); color:#fff; white-space:nowrap;}
   button.ghost{background:none; border:1px solid var(--line); color:var(--ink);}
   button.danger{background:var(--rust);}
   button.amber-btn{background:var(--amber); color:var(--ink);}
   button:hover{opacity:.9;}
   button:disabled{opacity:.4; cursor:not-allowed;}
 
-  .modal-bg{
-    display:none; position:fixed; inset:0; background:rgba(27,31,59,.5); z-index:50;
-    align-items:center; justify-content:center;
-  }
+  .modal-bg{display:none; position:fixed; inset:0; background:rgba(27,31,59,.5); z-index:50; align-items:center; justify-content:center;}
   .modal-bg.active{display:flex;}
   .modal{background:#fff; border-radius:10px; padding:22px; width:340px; max-width:90vw;}
   .modal h3{margin-bottom:14px; font-size:17px;}
   .modal label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;}
   .modal input, .modal select{width:100%;}
   .modal-actions{display:flex; justify-content:space-between; margin-top:18px;}
-
   .swatches{display:flex; gap:6px; margin-top:4px;}
   .swatch{width:22px; height:22px; border-radius:5px; cursor:pointer; border:2px solid transparent;}
   .swatch.sel{border-color:var(--ink);}
 
-  /* ---- TASKS ---- */
   .task-add{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;}
   .task-add input[type=text]{flex:1; min-width:160px;}
   .task-list{display:flex; flex-direction:column; gap:8px;}
-  .task{
-    display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--line);
-    border-radius:8px; background:#fff;
-  }
+  .task{display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:#fff;}
   .task.done{opacity:.5;}
   .task.overdue{border-color:var(--rust);}
   .task input[type=checkbox]{width:18px; height:18px; accent-color:var(--sage); cursor:pointer;}
@@ -149,10 +94,8 @@
   .badge.contracted{background:#FCEBD2; color:#A9701C;}
   .icon-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 6px;}
   .icon-btn:hover{color:var(--rust);}
-
   .empty{text-align:center; padding:40px 20px; color:var(--muted); font-size:13px;}
 
-  /* ---- PROJECTS ---- */
   .proj-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:14px; margin-bottom:22px;}
   .proj-card{border:1px solid var(--line); border-radius:10px; padding:16px; background:#fff; position:relative;}
   .proj-card .bar{position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:10px 0 0 10px;}
@@ -161,53 +104,40 @@
   .proj-card .sub{font-size:11px; color:var(--muted); padding-left:10px; margin-bottom:12px;}
   .proj-card .actions{padding-left:10px; display:flex; gap:8px;}
   .timer-active{background:var(--sage) !important;}
-
   .week-chart{margin-top:8px;}
   .week-row{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
   .week-row .name{width:120px; font-size:12.5px; font-weight:500; flex-shrink:0;}
   .week-row .track{flex:1; background:var(--paper); border-radius:5px; height:16px; overflow:hidden;}
   .week-row .fill{height:100%; border-radius:5px;}
   .week-row .hrs{width:52px; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); flex-shrink:0;}
-
   .add-proj{margin-top:16px;}
   .loading{text-align:center; padding:60px; color:var(--muted); font-size:13px;}
   .load-error{text-align:center; padding:60px 20px; color:var(--rust); font-size:13px;}
 
-  /* ---- INBOX ---- */
   .inbox-catch{display:flex; gap:8px; margin-bottom:6px;}
   .inbox-catch input[type=text]{flex:1; font-size:15px; padding:14px 16px;}
   .inbox-catch button{padding:0 22px; font-size:14px;}
   .inbox-hint{font-size:11.5px; color:var(--muted); margin-bottom:18px;}
   .inbox-list{display:flex; flex-direction:column; gap:8px;}
-  .inbox-item{
-    display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--line);
-    border-radius:8px; background:#fff; border-left:3px solid var(--amber);
-  }
+  .inbox-item{display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--line); border-radius:8px; background:#fff; border-left:3px solid var(--amber);}
   .inbox-item .txt{flex:1; font-size:13.5px;}
   .inbox-item .time{font-size:10.5px; color:var(--muted); font-family:'IBM Plex Mono', monospace; flex-shrink:0;}
   .inbox-item .actions{display:flex; gap:4px; flex-shrink:0;}
-  .small-btn{
-    font-size:11.5px; padding:5px 10px; border-radius:5px; border:1px solid var(--line);
-    background:#fff; color:var(--ink); cursor:pointer; font-family:'IBM Plex Sans', sans-serif; font-weight:500;
-  }
+  .small-btn{font-size:11.5px; padding:5px 10px; border-radius:5px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; font-family:'IBM Plex Sans', sans-serif; font-weight:500;}
   .small-btn:hover{background:var(--paper);}
   .small-btn.done{border-color:var(--sage); color:var(--sage);}
   .small-btn.promote{border-color:var(--ink); background:var(--ink); color:#fff;}
 
-  /* ---- CARS ---- */
   .tpl-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px;}
   @media (max-width:700px){ .tpl-grid{grid-template-columns:1fr;} }
   .tpl-card h3{font-size:14px; margin-bottom:4px;}
   .tpl-card .tpl-sub{font-size:11px; color:var(--muted); margin-bottom:12px;}
   .tpl-steps{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
   .tpl-step{display:flex; align-items:center; gap:8px; font-size:13px;}
-  .tpl-step .num{
-    font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--muted); width:18px; flex-shrink:0;
-  }
+  .tpl-step .num{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--muted); width:18px; flex-shrink:0;}
   .tpl-step .txt{flex:1;}
   .tpl-add-row{display:flex; gap:6px;}
   .tpl-add-row input{flex:1;}
-
   .car-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:14px;}
   .car-card{border:1px solid var(--line); border-radius:10px; padding:16px; background:#fff;}
   .car-card-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;}
@@ -222,29 +152,77 @@
   .car-history{font-size:10.5px; color:var(--muted); margin-top:8px; border-top:1px dashed var(--line); padding-top:8px;}
   .car-card-actions{display:flex; gap:8px; margin-top:10px;}
   .add-car-form{margin-top:18px;}
+
+  /* ---- AUTH ---- */
+  .auth-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;}
+  .auth-card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:32px 28px; width:360px; max-width:100%;}
+  .auth-card h1{font-size:22px; margin-bottom:4px; text-align:center;}
+  .auth-sub{text-align:center; font-size:12.5px; color:var(--muted); margin-bottom:20px;}
+  .auth-toggle{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:18px;}
+  .auth-toggle-btn{flex:1; background:#fff; color:var(--muted); border-radius:0; padding:9px;}
+  .auth-toggle-btn.active{background:var(--ink); color:#fff;}
+  .auth-card label{display:block; font-size:12px; color:var(--muted); margin:12px 0 4px;}
+  .auth-card input{width:100%;}
+  .auth-submit{width:100%; margin-top:20px; padding:11px;}
+  .auth-error{margin-top:12px; font-size:12.5px; color:var(--rust); background:#FBE1E4; padding:8px 10px; border-radius:6px;}
+
+  /* ---- SUPPLIERS ---- */
+  .supplier-list{display:flex; flex-direction:column; gap:8px;}
+  .supplier-item{display:flex; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--line); border-radius:10px; background:#fff;}
+  .supplier-item .name{flex:1; font-size:14.5px; font-weight:600;}
+  .supplier-item .joined-badge{font-size:10.5px; color:var(--sage); font-weight:600; font-family:'IBM Plex Mono', monospace;}
+  .add-supplier{margin-top:16px;}
+  .sup-detail-head{display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap;}
+  .sup-detail-head h2{font-size:20px; flex:1;}
+  .sup-subtabs{display:flex; gap:6px; margin-bottom:18px;}
+  .sup-subtab{padding:7px 14px; border-radius:20px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:12.5px; font-weight:600; color:var(--muted);}
+  .sup-subtab.active{background:var(--ink); color:#fff; border-color:var(--ink);}
+  .sup-subpanel{display:none;}
+  .sup-subpanel.active{display:block;}
 </style>
 </head>
 <body>
-<div class="app">
+
+<div id="authScreen" class="auth-wrap">
+  <div class="auth-card">
+    <h1>⏱ Рабочий планировщик</h1>
+    <div class="auth-sub">Задачи, авто и поставщики в одном месте</div>
+    <div class="auth-toggle">
+      <button class="auth-toggle-btn active" id="modeLoginBtn" onclick="setAuthMode('login')">Войти</button>
+      <button class="auth-toggle-btn" id="modeRegisterBtn" onclick="setAuthMode('register')">Регистрация</button>
+    </div>
+    <label>Имя пользователя</label>
+    <input type="text" id="authUsername" autocomplete="username">
+    <label>Пароль</label>
+    <input type="password" id="authPassword" autocomplete="current-password">
+    <div class="auth-error" id="authError" style="display:none;"></div>
+    <button class="auth-submit" id="authSubmitBtn" onclick="submitAuth()">Войти</button>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none;">
   <div class="header">
     <h1>⏱ Рабочий планировщик</h1>
-    <div class="date mono" id="todayLabel"></div>
+    <div class="header-right">
+      <div class="whoami">Привет, <b id="whoamiName"></b></div>
+      <button class="ghost" onclick="logout()">Выйти</button>
+      <div class="date mono" id="todayLabel"></div>
+    </div>
   </div>
 
   <div class="tabs" id="tabsBar">
     <button class="tab active" data-tab="tasks">Задачи</button>
     <button class="tab" data-tab="inbox">Входящие <span class="count" id="inboxCount" style="display:none;"></span></button>
-    <button class="tab" data-tab="cars">Авто</button>
+    <button class="tab" data-tab="suppliers">Поставщики</button>
     <button class="tab" data-tab="schedule">Расписание</button>
     <button class="tab" data-tab="projects">Проекты и время</button>
   </div>
 
-  <div id="loading" class="loading">Подключаюсь к базе данных...</div>
+  <div id="loading" class="loading">Загрузка данных...</div>
   <div id="loadError" class="load-error" style="display:none;"></div>
 
   <div id="content" style="display:none;">
 
-    <!-- TASKS -->
     <div class="panel active" id="panel-tasks">
       <div class="card">
         <div class="task-add">
@@ -261,58 +239,97 @@
       </div>
     </div>
 
-    <!-- INBOX -->
     <div class="panel" id="panel-inbox">
       <div class="card">
         <div class="inbox-catch">
           <input type="text" id="inboxInput" placeholder="Прилетело что-то срочное — кинь сюда, не отвлекаясь...">
           <button onclick="addInbox()">Поймать</button>
         </div>
-        <div class="inbox-hint">Разберёшь, когда закончишь текущую задачу. Отсюда можно перекинуть в «Задачи» или сразу закрыть.</div>
+        <div class="inbox-hint">Разберёшь, когда закончишь текущую задачу.</div>
         <div class="inbox-list" id="inboxList"></div>
       </div>
     </div>
 
-    <!-- CARS -->
-    <div class="panel" id="panel-cars">
-      <div class="tpl-grid">
-        <div class="card tpl-card">
-          <h3>Чек-лист — свои авто</h3>
-          <div class="tpl-sub">Шаги для машин, которые принадлежат вам</div>
-          <div class="tpl-steps" id="tplStepsOwn"></div>
-          <div class="tpl-add-row">
-            <input type="text" id="tplInputOwn" placeholder="Добавить шаг...">
-            <button class="ghost" onclick="addTplStep('own')">+</button>
-          </div>
+    <!-- SUPPLIERS -->
+    <div class="panel" id="panel-suppliers">
+      <!-- list view -->
+      <div id="supplierListView">
+        <div class="card">
+          <div class="supplier-list" id="supplierList"></div>
         </div>
-        <div class="card tpl-card">
-          <h3>Чек-лист — привлечённые авто</h3>
-          <div class="tpl-sub">Шаги для машин со стороны (аренда/привлечёнка)</div>
-          <div class="tpl-steps" id="tplStepsContracted"></div>
-          <div class="tpl-add-row">
-            <input type="text" id="tplInputContracted" placeholder="Добавить шаг...">
-            <button class="ghost" onclick="addTplStep('contracted')">+</button>
+        <div class="card add-supplier">
+          <div class="form-row">
+            <input type="text" id="newSupplierName" placeholder="Название нового поставщика">
+            <button onclick="createSupplier()">Создать поставщика</button>
           </div>
         </div>
       </div>
 
-      <h3 style="font-size:16px; margin-bottom:12px;">Мои машины</h3>
-      <div class="car-grid" id="carGrid"></div>
+      <!-- detail view -->
+      <div id="supplierDetailView" style="display:none;">
+        <div class="sup-detail-head">
+          <button class="ghost" onclick="closeSupplier()">← К списку</button>
+          <h2 id="supDetailName"></h2>
+        </div>
+        <div class="sup-subtabs">
+          <button class="sup-subtab active" data-sub="sup-tasks">Задачи</button>
+          <button class="sup-subtab" data-sub="sup-cars">Авто</button>
+        </div>
 
-      <div class="card add-car-form">
-        <div class="form-row">
-          <input type="text" id="carName" placeholder="Название/модель">
-          <input type="text" id="carPlate" placeholder="Гос. номер (необязательно)">
-          <select id="carType">
-            <option value="own">Своя</option>
-            <option value="contracted">Привлечённая</option>
-          </select>
-          <button onclick="addCar()">Добавить машину</button>
+        <div class="sup-subpanel active" id="sup-tasks">
+          <div class="card">
+            <div class="task-add">
+              <input type="text" id="supTaskTitle" placeholder="Новая задача поставщика...">
+              <input type="date" id="supTaskDeadline">
+              <select id="supTaskPriority">
+                <option value="low">Низкий</option>
+                <option value="medium" selected>Средний</option>
+                <option value="high">Высокий</option>
+              </select>
+              <button onclick="addSupTask()">Добавить</button>
+            </div>
+            <div class="task-list" id="supTaskList"></div>
+          </div>
+        </div>
+
+        <div class="sup-subpanel" id="sup-cars">
+          <div class="tpl-grid">
+            <div class="card tpl-card">
+              <h3>Чек-лист — свои авто</h3>
+              <div class="tpl-sub">Шаги для машин поставщика</div>
+              <div class="tpl-steps" id="supTplStepsOwn"></div>
+              <div class="tpl-add-row">
+                <input type="text" id="supTplInputOwn" placeholder="Добавить шаг...">
+                <button class="ghost" onclick="addSupTplStep('own')">+</button>
+              </div>
+            </div>
+            <div class="card tpl-card">
+              <h3>Чек-лист — привлечённые авто</h3>
+              <div class="tpl-sub">Шаги для машин со стороны</div>
+              <div class="tpl-steps" id="supTplStepsContracted"></div>
+              <div class="tpl-add-row">
+                <input type="text" id="supTplInputContracted" placeholder="Добавить шаг...">
+                <button class="ghost" onclick="addSupTplStep('contracted')">+</button>
+              </div>
+            </div>
+          </div>
+          <h3 style="font-size:16px; margin-bottom:12px;">Машины</h3>
+          <div class="car-grid" id="supCarGrid"></div>
+          <div class="card add-car-form">
+            <div class="form-row">
+              <input type="text" id="supCarName" placeholder="Название/модель">
+              <input type="text" id="supCarPlate" placeholder="Гос. номер (необязательно)">
+              <select id="supCarType">
+                <option value="own">Своя</option>
+                <option value="contracted">Привлечённая</option>
+              </select>
+              <button onclick="addSupCar()">Добавить машину</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- SCHEDULE -->
     <div class="panel" id="panel-schedule">
       <div class="day-tabs" id="dayTabs"></div>
       <div class="card">
@@ -324,7 +341,6 @@
       </div>
     </div>
 
-    <!-- PROJECTS -->
     <div class="panel" id="panel-projects">
       <div class="proj-grid" id="projGrid"></div>
       <div class="card add-proj">
@@ -343,7 +359,6 @@
   </div>
 </div>
 
-<!-- Modal for schedule block -->
 <div class="modal-bg" id="modalBg">
   <div class="modal">
     <h3 id="modalTitle">Новый блок</h3>
@@ -366,7 +381,6 @@
 </div>
 
 <script>
-/* ============ SUPABASE ============ */
 const SUPABASE_URL = 'https://tepkztacvwhjvkbteqsc.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_BgOPHcNCKfHCwxT6EvFZ3A_IwRHmFJo';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -381,58 +395,129 @@ const CATS = [
   {id:'break', label:'Перерыв', color:'#8B8FA3'},
 ];
 const PROJ_COLORS = ['#1B1F3B','#E8A33D','#5C8374','#B23A48','#4C6B8A','#8B5FBF'];
+const DEFAULT_TPL_OWN = ["Проверить уровень масла","Проверить давление в шинах","Проверить тормозные колодки","Проверить аккумулятор","Проверить страховку/техосмотр","Помыть машину"];
+const DEFAULT_TPL_CONTRACTED = ["Проверить документы (договор/акт)","Сфотографировать состояние кузова","Зафиксировать показания одометра","Проверить уровень топлива","Проверить салон на повреждения","Вернуть по акту приёма-передачи"];
 
-let state = { schedule:{}, tasks:[], projects:[], inbox:[], templates:{own:[], contracted:[]}, cars:[] };
+let currentUser = null; // {id, username}
+let authMode = 'login';
+let state = { schedule:{}, tasks:[], projects:[], inbox:[] };
+let suppliers = [];
+let myMemberships = new Set();
+let currentSupplier = null; // {id, name, templates:{own,contracted}, cars:[], tasks:[]}
 let selectedDay = DAY_KEYS[ (new Date().getDay()+6)%7 ];
 let editingBlockId = null;
 let selectedCat = 'work';
 let selectedProjColor = PROJ_COLORS[0];
 let timerTick = null;
 
-function uid(){ return Math.random().toString(36).slice(2,10); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function formatDate(iso){ const d=new Date(iso+'T00:00:00'); return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}); }
+function fmtHM(min){ const h=Math.floor(min/60), m=min%60; return `${h}ч ${String(m).padStart(2,'0')}м`; }
+function markSwatch(el, sel){ el.querySelectorAll('.swatch').forEach(x=>x.classList.remove('sel')); sel.classList.add('sel'); }
 
-/* ---------------- LOAD ALL DATA ---------------- */
-async function loadAll(){
-  const [tasksR, inboxR, tplR, carsR, schedR, projR] = await Promise.all([
+/* ============ AUTH ============ */
+function synthEmail(username){
+  return username.trim().toLowerCase().replace(/\s+/g,'_') + '@planner.local';
+}
+function setAuthMode(mode){
+  authMode = mode;
+  document.getElementById('modeLoginBtn').classList.toggle('active', mode==='login');
+  document.getElementById('modeRegisterBtn').classList.toggle('active', mode==='register');
+  document.getElementById('authSubmitBtn').textContent = mode==='login' ? 'Войти' : 'Зарегистрироваться';
+  document.getElementById('authPassword').autocomplete = mode==='login' ? 'current-password' : 'new-password';
+  document.getElementById('authError').style.display = 'none';
+}
+function showAuthError(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function translateAuthError(msg){
+  if(/already registered|already exists|duplicate/i.test(msg)) return 'Это имя пользователя уже занято';
+  if(/invalid login credentials/i.test(msg)) return 'Неверное имя пользователя или пароль';
+  if(/password.*(6|least)/i.test(msg)) return 'Пароль должен быть не короче 6 символов';
+  return msg;
+}
+async function submitAuth(){
+  const username = document.getElementById('authUsername').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!username || !password){ showAuthError('Заполните имя и пароль'); return; }
+  if(password.length < 6){ showAuthError('Пароль должен быть не короче 6 символов'); return; }
+  const email = synthEmail(username);
+  const btn = document.getElementById('authSubmitBtn');
+  btn.disabled = true;
+  try{
+    if(authMode === 'register'){
+      const {data, error} = await sb.auth.signUp({email, password, options:{data:{username}}});
+      if(error) throw error;
+      if(!data.session){
+        showAuthError('Регистрация прошла. Теперь войдите с этим паролем.');
+        setAuthMode('login');
+        btn.disabled = false;
+        return;
+      }
+    } else {
+      const {data, error} = await sb.auth.signInWithPassword({email, password});
+      if(error) throw error;
+    }
+    await bootAfterAuth();
+  }catch(e){
+    showAuthError(translateAuthError(e.message));
+    btn.disabled = false;
+  }
+}
+async function logout(){
+  await sb.auth.signOut();
+  location.reload();
+}
+
+/* ============ BOOT ============ */
+async function bootAfterAuth(){
+  const {data:{user}} = await sb.auth.getUser();
+  if(!user){ return; }
+  let username = user.email;
+  try{
+    const {data} = await sb.from('profiles').select('username').eq('id', user.id).single();
+    if(data) username = data.username;
+  }catch(e){ /* ignore */ }
+  currentUser = {id:user.id, username};
+
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  document.getElementById('whoamiName').textContent = currentUser.username;
+  document.getElementById('todayLabel').textContent = new Date().toLocaleDateString('ru-RU', {weekday:'long', day:'numeric', month:'long'});
+
+  try{
+    await loadPersonalData();
+    await loadSuppliers();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    initApp();
+  }catch(e){
+    document.getElementById('loading').style.display = 'none';
+    const err = document.getElementById('loadError');
+    err.style.display = 'block';
+    err.textContent = 'Не удалось загрузить данные: ' + e.message;
+  }
+}
+
+async function loadPersonalData(){
+  const [tasksR, inboxR, schedR, projR] = await Promise.all([
     sb.from('tasks').select('*'),
     sb.from('inbox_items').select('*').order('created_at', {ascending:false}),
-    sb.from('checklist_templates').select('*').order('step_order'),
-    sb.from('cars').select('*, car_checks(*), car_history(completed_at)').order('created_at'),
     sb.from('schedule_blocks').select('*'),
     sb.from('projects').select('*, time_entries(*)').order('created_at'),
   ]);
-
-  for(const r of [tasksR, inboxR, tplR, carsR, schedR, projR]){
-    if(r.error) throw r.error;
-  }
+  for(const r of [tasksR, inboxR, schedR, projR]){ if(r.error) throw r.error; }
 
   state.tasks = tasksR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done}));
-  state.inbox = inboxR.data.map(i=>({id:i.id, text:i.text, createdAt: new Date(i.created_at).getTime()}));
-
-  state.templates = {own:[], contracted:[]};
-  tplR.data.forEach(s=>{
-    state.templates[s.type].push({id:s.id, text:s.text});
-  });
-
-  state.cars = carsR.data.map(c=>{
-    const checks = {};
-    (c.car_checks||[]).forEach(ck=>{ checks[ck.step_id] = ck.done; });
-    const history = (c.car_history||[]).map(h=>h.completed_at).sort().reverse().slice(0,5);
-    return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, checks, history};
-  });
-
+  state.inbox = inboxR.data.map(i=>({id:i.id, text:i.text, createdAt:new Date(i.created_at).getTime()}));
   state.schedule = {};
   schedR.data.forEach(b=>{
     if(!state.schedule[b.day]) state.schedule[b.day] = [];
-    state.schedule[b.day].push({
-      id:b.id, title:b.title,
-      start:(b.start_time||'').slice(0,5),
-      end:(b.end_time||'').slice(0,5),
-      cat:b.category
-    });
+    state.schedule[b.day].push({id:b.id, title:b.title, start:(b.start_time||'').slice(0,5), end:(b.end_time||'').slice(0,5), cat:b.category});
   });
-
   state.projects = projR.data.map(p=>({
     id:p.id, name:p.name, color:p.color,
     running: p.running_since ? new Date(p.running_since).getTime() : null,
@@ -440,10 +525,18 @@ async function loadAll(){
   }));
 }
 
-function init(){
-  document.getElementById('todayLabel').textContent =
-    new Date().toLocaleDateString('ru-RU', {weekday:'long', day:'numeric', month:'long'});
+async function loadSuppliers(){
+  const [supR, memR] = await Promise.all([
+    sb.from('suppliers').select('*').order('created_at'),
+    sb.from('supplier_members').select('supplier_id').eq('user_id', currentUser.id),
+  ]);
+  if(supR.error) throw supR.error;
+  if(memR.error) throw memR.error;
+  suppliers = supR.data;
+  myMemberships = new Set(memR.data.map(m=>m.supplier_id));
+}
 
+function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
       document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -452,35 +545,29 @@ function init(){
       document.getElementById('panel-'+t.dataset.tab).classList.add('active');
     };
   });
-
-  document.getElementById('inboxInput').addEventListener('keydown', (e)=>{
-    if(e.key==='Enter') addInbox();
-  });
-  document.getElementById('tplInputOwn').addEventListener('keydown', (e)=>{
-    if(e.key==='Enter') addTplStep('own');
-  });
-  document.getElementById('tplInputContracted').addEventListener('keydown', (e)=>{
-    if(e.key==='Enter') addTplStep('contracted');
+  document.querySelectorAll('.sup-subtab').forEach(t=>{
+    t.onclick = ()=>{
+      document.querySelectorAll('.sup-subtab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.sup-subpanel').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById(t.dataset.sub).classList.add('active');
+    };
   });
 
-  buildDayTabs();
-  buildHours();
-  buildLegend();
-  buildBlockSwatches();
-  buildProjSwatches();
-  renderSchedule();
-  renderTasks();
-  renderInbox();
-  renderTemplates();
-  renderCars();
-  renderProjects();
-  renderWeekChart();
+  document.getElementById('inboxInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addInbox(); });
+  document.getElementById('supTplInputOwn').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('own'); });
+  document.getElementById('supTplInputContracted').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('contracted'); });
+  document.getElementById('newSupplierName').addEventListener('keydown', e=>{ if(e.key==='Enter') createSupplier(); });
+
+  buildDayTabs(); buildHours(); buildLegend(); buildBlockSwatches(); buildProjSwatches();
+  renderSchedule(); renderTasks(); renderInbox(); renderProjects(); renderWeekChart();
+  renderSupplierList();
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
 }
 
-/* ---------------- SCHEDULE ---------------- */
+/* ============ SCHEDULE ============ */
 function buildDayTabs(){
   const wrap = document.getElementById('dayTabs');
   const todayKey = DAY_KEYS[(new Date().getDay()+6)%7];
@@ -488,84 +575,55 @@ function buildDayTabs(){
     const key = DAY_KEYS[i];
     return `<button class="day-tab ${key===selectedDay?'active':''} ${key===todayKey?'today':''}" data-day="${key}">${d}</button>`;
   }).join('');
-  wrap.querySelectorAll('.day-tab').forEach(b=>{
-    b.onclick = ()=>{ selectedDay = b.dataset.day; buildDayTabs(); renderSchedule(); };
-  });
+  wrap.querySelectorAll('.day-tab').forEach(b=>{ b.onclick = ()=>{ selectedDay=b.dataset.day; buildDayTabs(); renderSchedule(); }; });
 }
-
 function buildHours(){
   const hoursCol = document.getElementById('railHours');
   const track = document.getElementById('railTrack');
-  let hoursHtml = '', trackHtml = '';
+  let hoursHtml='', trackHtml='';
   for(let h=START_HOUR; h<END_HOUR; h++){
     hoursHtml += `<div class="rail-hour">${String(h).padStart(2,'0')}:00</div>`;
     trackHtml += `<div class="rail-slot" data-hour="${h}"></div>`;
   }
-  hoursCol.innerHTML = hoursHtml;
-  track.innerHTML = trackHtml;
-  track.querySelectorAll('.rail-slot').forEach(slot=>{
-    slot.onclick = ()=> openModal(null, parseInt(slot.dataset.hour));
-  });
+  hoursCol.innerHTML = hoursHtml; track.innerHTML = trackHtml;
+  track.querySelectorAll('.rail-slot').forEach(slot=>{ slot.onclick = ()=> openModal(null, parseInt(slot.dataset.hour)); });
 }
-
 function buildLegend(){
-  document.getElementById('legend').innerHTML = CATS.map(c=>
-    `<span><span class="dot" style="background:${c.color}"></span>${c.label}</span>`
-  ).join('');
+  document.getElementById('legend').innerHTML = CATS.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${c.label}</span>`).join('');
 }
-
 function buildBlockSwatches(){
   const el = document.getElementById('blockSwatches');
   el.innerHTML = CATS.map(c=>`<div class="swatch" data-cat="${c.id}" style="background:${c.color}"></div>`).join('');
-  el.querySelectorAll('.swatch').forEach(s=>{
-    s.onclick = ()=>{ selectedCat = s.dataset.cat; markSwatch(el, s); };
-  });
+  el.querySelectorAll('.swatch').forEach(s=>{ s.onclick=()=>{ selectedCat=s.dataset.cat; markSwatch(el,s); }; });
 }
-function markSwatch(el, sel){
-  el.querySelectorAll('.swatch').forEach(x=>x.classList.remove('sel'));
-  sel.classList.add('sel');
-}
-
 function renderSchedule(){
   const track = document.getElementById('railTrack');
   track.querySelectorAll('.rail-block, .now-line').forEach(n=>n.remove());
-  const blocks = (state.schedule[selectedDay] || []);
-  const totalMinutes = (END_HOUR - START_HOUR) * 60;
+  const blocks = state.schedule[selectedDay] || [];
+  const totalMinutes = (END_HOUR-START_HOUR)*60;
   const trackHeight = track.offsetHeight || (END_HOUR-START_HOUR)*52;
-
   blocks.forEach(b=>{
-    const [sh,sm] = b.start.split(':').map(Number);
-    const [eh,em] = b.end.split(':').map(Number);
-    const startMin = Math.max(0,(sh*60+sm) - START_HOUR*60);
-    const endMin = Math.min(totalMinutes,(eh*60+em) - START_HOUR*60);
+    const [sh,sm]=b.start.split(':').map(Number), [eh,em]=b.end.split(':').map(Number);
+    const startMin=Math.max(0,(sh*60+sm)-START_HOUR*60), endMin=Math.min(totalMinutes,(eh*60+em)-START_HOUR*60);
     if(endMin<=startMin) return;
-    const top = (startMin/totalMinutes)*trackHeight;
-    const height = Math.max(20,((endMin-startMin)/totalMinutes)*trackHeight);
-    const cat = CATS.find(c=>c.id===b.cat) || CATS[0];
+    const top=(startMin/totalMinutes)*trackHeight, height=Math.max(20,((endMin-startMin)/totalMinutes)*trackHeight);
+    const cat = CATS.find(c=>c.id===b.cat)||CATS[0];
     const div = document.createElement('div');
-    div.className = 'rail-block';
-    div.style.top = top+'px';
-    div.style.height = (height-2)+'px';
-    div.style.background = cat.color;
+    div.className='rail-block'; div.style.top=top+'px'; div.style.height=(height-2)+'px'; div.style.background=cat.color;
     div.innerHTML = `<div class="t">${b.start}–${b.end}</div><div>${escapeHtml(b.title)}</div>`;
-    div.onclick = (e)=>{ e.stopPropagation(); openModal(b); };
+    div.onclick=(e)=>{ e.stopPropagation(); openModal(b); };
     track.appendChild(div);
   });
-
   const todayKey = DAY_KEYS[(new Date().getDay()+6)%7];
-  if(selectedDay === todayKey){
-    const now = new Date();
-    const nowMin = now.getHours()*60+now.getMinutes() - START_HOUR*60;
+  if(selectedDay===todayKey){
+    const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes()-START_HOUR*60;
     if(nowMin>=0 && nowMin<=totalMinutes){
-      const top = (nowMin/totalMinutes)*trackHeight;
-      const line = document.createElement('div');
-      line.className = 'now-line';
-      line.style.top = top+'px';
+      const top=(nowMin/totalMinutes)*trackHeight;
+      const line=document.createElement('div'); line.className='now-line'; line.style.top=top+'px';
       track.appendChild(line);
     }
   }
 }
-
 function openModal(block, hourHint){
   editingBlockId = block ? block.id : null;
   document.getElementById('modalTitle').textContent = block ? 'Редактировать блок' : 'Новый блок';
@@ -579,342 +637,365 @@ function openModal(block, hourHint){
   document.getElementById('modalBg').classList.add('active');
 }
 function closeModal(){ document.getElementById('modalBg').classList.remove('active'); }
-
 async function saveBlock(){
-  const title = document.getElementById('blockTitle').value.trim();
-  const start = document.getElementById('blockStart').value;
-  const end = document.getElementById('blockEnd').value;
-  if(!title || !start || !end) return;
+  const title=document.getElementById('blockTitle').value.trim();
+  const start=document.getElementById('blockStart').value;
+  const end=document.getElementById('blockEnd').value;
+  if(!title||!start||!end) return;
   try{
     if(editingBlockId){
-      const {error} = await sb.from('schedule_blocks').update({
-        title, start_time:start, end_time:end, category:selectedCat
-      }).eq('id', editingBlockId);
+      const {error} = await sb.from('schedule_blocks').update({title,start_time:start,end_time:end,category:selectedCat}).eq('id',editingBlockId);
       if(error) throw error;
-      const b = state.schedule[selectedDay].find(x=>x.id===editingBlockId);
-      Object.assign(b, {title, start, end, cat:selectedCat});
+      Object.assign(state.schedule[selectedDay].find(x=>x.id===editingBlockId), {title,start,end,cat:selectedCat});
     } else {
-      const {data, error} = await sb.from('schedule_blocks').insert({
-        day:selectedDay, title, start_time:start, end_time:end, category:selectedCat
-      }).select().single();
+      const {data,error} = await sb.from('schedule_blocks').insert({day:selectedDay,title,start_time:start,end_time:end,category:selectedCat}).select().single();
       if(error) throw error;
-      if(!state.schedule[selectedDay]) state.schedule[selectedDay] = [];
-      state.schedule[selectedDay].push({id:data.id, title, start, end, cat:selectedCat});
+      if(!state.schedule[selectedDay]) state.schedule[selectedDay]=[];
+      state.schedule[selectedDay].push({id:data.id,title,start,end,cat:selectedCat});
     }
-    closeModal();
-    renderSchedule();
+    closeModal(); renderSchedule();
   }catch(e){ alert('Не удалось сохранить: '+e.message); }
 }
 async function deleteBlock(){
   try{
-    const {error} = await sb.from('schedule_blocks').delete().eq('id', editingBlockId);
+    const {error} = await sb.from('schedule_blocks').delete().eq('id',editingBlockId);
     if(error) throw error;
     state.schedule[selectedDay] = (state.schedule[selectedDay]||[]).filter(x=>x.id!==editingBlockId);
-    closeModal();
-    renderSchedule();
+    closeModal(); renderSchedule();
   }catch(e){ alert('Не удалось удалить: '+e.message); }
 }
 
-/* ---------------- TASKS ---------------- */
+/* ============ PERSONAL TASKS ============ */
 async function addTask(title, deadline, priority){
-  const t = title !== undefined ? title : document.getElementById('taskTitle').value.trim();
-  let d = deadline !== undefined ? deadline : document.getElementById('taskDeadline').value;
-  const p = priority !== undefined ? priority : document.getElementById('taskPriority').value;
+  const t = title!==undefined ? title : document.getElementById('taskTitle').value.trim();
+  let d = deadline!==undefined ? deadline : document.getElementById('taskDeadline').value;
+  const p = priority!==undefined ? priority : document.getElementById('taskPriority').value;
   if(!t) return;
   if(!d) d = null;
   try{
-    const {data, error} = await sb.from('tasks').insert({title:t, deadline:d, priority:p, done:false}).select().single();
+    const {data,error} = await sb.from('tasks').insert({title:t,deadline:d,priority:p,done:false}).select().single();
     if(error) throw error;
-    state.tasks.push({id:data.id, title:t, deadline:d||'', priority:p, done:false});
-    if(title === undefined){
-      document.getElementById('taskTitle').value = '';
-      document.getElementById('taskDeadline').value = '';
-    }
+    state.tasks.push({id:data.id,title:t,deadline:d||'',priority:p,done:false});
+    if(title===undefined){ document.getElementById('taskTitle').value=''; document.getElementById('taskDeadline').value=''; }
     renderTasks();
   }catch(e){ alert('Не удалось добавить задачу: '+e.message); }
 }
 async function toggleTask(id){
-  const t = state.tasks.find(x=>x.id===id);
-  const newDone = !t.done;
-  try{
-    const {error} = await sb.from('tasks').update({done:newDone}).eq('id', id);
-    if(error) throw error;
-    t.done = newDone;
-    renderTasks();
-  }catch(e){ alert('Не удалось обновить задачу: '+e.message); }
+  const t = state.tasks.find(x=>x.id===id); const newDone=!t.done;
+  try{ const {error}=await sb.from('tasks').update({done:newDone}).eq('id',id); if(error) throw error; t.done=newDone; renderTasks(); }
+  catch(e){ alert('Не удалось обновить: '+e.message); }
 }
 async function deleteTask(id){
-  try{
-    const {error} = await sb.from('tasks').delete().eq('id', id);
-    if(error) throw error;
-    state.tasks = state.tasks.filter(x=>x.id!==id);
-    renderTasks();
-  }catch(e){ alert('Не удалось удалить задачу: '+e.message); }
+  try{ const {error}=await sb.from('tasks').delete().eq('id',id); if(error) throw error; state.tasks=state.tasks.filter(x=>x.id!==id); renderTasks(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
 }
 function renderTasks(){
   const list = document.getElementById('taskList');
-  if(state.tasks.length===0){
-    list.innerHTML = `<div class="empty">Пока нет задач. Добавьте первую выше.</div>`;
-    return;
-  }
-  const sorted = [...state.tasks].sort((a,b)=>{
-    if(a.done !== b.done) return a.done ? 1 : -1;
-    return (a.deadline||'9999').localeCompare(b.deadline||'9999');
-  });
-  const todayStr = todayISO();
-  const priorityLabel = {low:'Низкий', medium:'Средний', high:'Высокий'};
+  if(state.tasks.length===0){ list.innerHTML=`<div class="empty">Пока нет задач.</div>`; return; }
+  const sorted=[...state.tasks].sort((a,b)=>{ if(a.done!==b.done) return a.done?1:-1; return (a.deadline||'9999').localeCompare(b.deadline||'9999'); });
+  const todayStr=todayISO(); const pl={low:'Низкий',medium:'Средний',high:'Высокий'};
   list.innerHTML = sorted.map(t=>{
-    const overdue = !t.done && t.deadline && t.deadline < todayStr;
+    const overdue = !t.done && t.deadline && t.deadline<todayStr;
     return `<div class="task ${t.done?'done':''} ${overdue?'overdue':''}">
       <input type="checkbox" ${t.done?'checked':''} onchange="toggleTask('${t.id}')">
       <div class="title">${escapeHtml(t.title)}</div>
-      <div class="meta">
-        ${t.deadline ? `<span class="mono">${formatDate(t.deadline)}</span>` : ''}
-        <span class="badge ${t.priority}">${priorityLabel[t.priority]}</span>
-      </div>
+      <div class="meta">${t.deadline?`<span class="mono">${formatDate(t.deadline)}</span>`:''}<span class="badge ${t.priority}">${pl[t.priority]}</span></div>
       <button class="icon-btn" onclick="deleteTask('${t.id}')">✕</button>
     </div>`;
   }).join('');
 }
-function formatDate(iso){
-  const d = new Date(iso+'T00:00:00');
-  return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'2-digit'});
-}
 
-/* ---------------- INBOX ---------------- */
+/* ============ INBOX ============ */
 async function addInbox(){
-  const input = document.getElementById('inboxInput');
-  const text = input.value.trim();
-  if(!text) return;
+  const input=document.getElementById('inboxInput'); const text=input.value.trim(); if(!text) return;
   try{
-    const {data, error} = await sb.from('inbox_items').insert({text}).select().single();
+    const {data,error}=await sb.from('inbox_items').insert({text}).select().single();
     if(error) throw error;
-    state.inbox.unshift({id:data.id, text, createdAt: new Date(data.created_at).getTime()});
-    input.value = '';
-    input.focus();
-    renderInbox();
+    state.inbox.unshift({id:data.id,text,createdAt:new Date(data.created_at).getTime()});
+    input.value=''; input.focus(); renderInbox();
   }catch(e){ alert('Не удалось сохранить: '+e.message); }
 }
 async function inboxPromote(id){
-  const item = state.inbox.find(x=>x.id===id);
-  if(!item) return;
-  await addTask(item.text, '', 'high');
-  try{
-    const {error} = await sb.from('inbox_items').delete().eq('id', id);
-    if(error) throw error;
-    state.inbox = state.inbox.filter(x=>x.id!==id);
-    renderInbox();
-  }catch(e){ alert('Не удалось убрать из входящих: '+e.message); }
+  const item=state.inbox.find(x=>x.id===id); if(!item) return;
+  await addTask(item.text,'','high');
+  try{ const {error}=await sb.from('inbox_items').delete().eq('id',id); if(error) throw error; state.inbox=state.inbox.filter(x=>x.id!==id); renderInbox(); }
+  catch(e){ alert('Не удалось убрать: '+e.message); }
 }
 async function inboxDone(id){
-  try{
-    const {error} = await sb.from('inbox_items').delete().eq('id', id);
-    if(error) throw error;
-    state.inbox = state.inbox.filter(x=>x.id!==id);
-    renderInbox();
-  }catch(e){ alert('Не удалось удалить: '+e.message); }
+  try{ const {error}=await sb.from('inbox_items').delete().eq('id',id); if(error) throw error; state.inbox=state.inbox.filter(x=>x.id!==id); renderInbox(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
 }
 function renderInbox(){
-  const list = document.getElementById('inboxList');
-  const countEl = document.getElementById('inboxCount');
-  if(state.inbox.length===0){
-    countEl.style.display = 'none';
-    list.innerHTML = `<div class="empty">Входящих нет — всё поймано и разобрано.</div>`;
-    return;
-  }
-  countEl.style.display = 'inline-block';
-  countEl.textContent = state.inbox.length;
+  const list=document.getElementById('inboxList'); const countEl=document.getElementById('inboxCount');
+  if(state.inbox.length===0){ countEl.style.display='none'; list.innerHTML=`<div class="empty">Входящих нет.</div>`; return; }
+  countEl.style.display='inline-block'; countEl.textContent=state.inbox.length;
   list.innerHTML = state.inbox.map(item=>{
-    const time = new Date(item.createdAt).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
-    return `<div class="inbox-item">
-      <span class="time">${time}</span>
-      <div class="txt">${escapeHtml(item.text)}</div>
-      <div class="actions">
-        <button class="small-btn promote" onclick="inboxPromote('${item.id}')">→ В задачи</button>
-        <button class="small-btn done" onclick="inboxDone('${item.id}')">✓ Готово</button>
-      </div>
+    const time=new Date(item.createdAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    return `<div class="inbox-item"><span class="time">${time}</span><div class="txt">${escapeHtml(item.text)}</div>
+      <div class="actions"><button class="small-btn promote" onclick="inboxPromote('${item.id}')">→ В задачи</button>
+      <button class="small-btn done" onclick="inboxDone('${item.id}')">✓ Готово</button></div></div>`;
+  }).join('');
+}
+
+/* ============ SUPPLIERS: LIST ============ */
+function renderSupplierList(){
+  const list = document.getElementById('supplierList');
+  if(suppliers.length===0){ list.innerHTML = `<div class="empty">Поставщиков пока нет — создайте первого ниже.</div>`; return; }
+  list.innerHTML = suppliers.map(s=>{
+    const joined = myMemberships.has(s.id);
+    return `<div class="supplier-item">
+      <div class="name">${escapeHtml(s.name)}</div>
+      ${joined ? '<span class="joined-badge">✓ добавлен</span>' : ''}
+      ${joined
+        ? `<button onclick="openSupplier('${s.id}')">Открыть</button>`
+        : `<button class="ghost" onclick="joinSupplier('${s.id}')">Добавить к себе</button>`}
+    </div>`;
+  }).join('');
+}
+async function joinSupplier(id){
+  try{
+    const {error} = await sb.from('supplier_members').insert({supplier_id:id});
+    if(error) throw error;
+    myMemberships.add(id);
+    renderSupplierList();
+  }catch(e){ alert('Не удалось добавить: '+e.message); }
+}
+async function createSupplier(){
+  const input = document.getElementById('newSupplierName');
+  const name = input.value.trim();
+  if(!name) return;
+  try{
+    const {data, error} = await sb.from('suppliers').insert({name}).select().single();
+    if(error) throw error;
+    const {error: memErr} = await sb.from('supplier_members').insert({supplier_id:data.id});
+    if(memErr) throw memErr;
+    const tplRows = [
+      ...DEFAULT_TPL_OWN.map((t,i)=>({supplier_id:data.id, type:'own', step_order:i+1, text:t})),
+      ...DEFAULT_TPL_CONTRACTED.map((t,i)=>({supplier_id:data.id, type:'contracted', step_order:i+1, text:t})),
+    ];
+    const {error: tplErr} = await sb.from('checklist_templates').insert(tplRows);
+    if(tplErr) throw tplErr;
+    suppliers.push(data);
+    myMemberships.add(data.id);
+    input.value = '';
+    renderSupplierList();
+  }catch(e){ alert('Не удалось создать поставщика: '+e.message); }
+}
+
+/* ============ SUPPLIERS: DETAIL ============ */
+async function openSupplier(id){
+  const supplier = suppliers.find(s=>s.id===id);
+  if(!supplier) return;
+  try{
+    const [tplR, carsR, tasksR] = await Promise.all([
+      sb.from('checklist_templates').select('*').eq('supplier_id', id).order('step_order'),
+      sb.from('cars').select('*, car_checks(*), car_history(completed_at)').eq('supplier_id', id).order('created_at'),
+      sb.from('supplier_tasks').select('*').eq('supplier_id', id),
+    ]);
+    for(const r of [tplR, carsR, tasksR]){ if(r.error) throw r.error; }
+
+    const templates = {own:[], contracted:[]};
+    tplR.data.forEach(s=>templates[s.type].push({id:s.id, text:s.text}));
+
+    const cars = carsR.data.map(c=>{
+      const checks = {};
+      (c.car_checks||[]).forEach(ck=>{ checks[ck.step_id]=ck.done; });
+      const history = (c.car_history||[]).map(h=>h.completed_at).sort().reverse().slice(0,5);
+      return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, checks, history};
+    });
+
+    const tasks = tasksR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done}));
+
+    currentSupplier = {id, name:supplier.name, templates, cars, tasks};
+
+    document.getElementById('supplierListView').style.display = 'none';
+    document.getElementById('supplierDetailView').style.display = 'block';
+    document.getElementById('supDetailName').textContent = supplier.name;
+    document.querySelectorAll('.sup-subtab').forEach((x,i)=>x.classList.toggle('active', i===0));
+    document.querySelectorAll('.sup-subpanel').forEach((x,i)=>x.classList.toggle('active', i===0));
+
+    renderSupTasks(); renderSupTemplates(); renderSupCars();
+  }catch(e){ alert('Не удалось открыть поставщика: '+e.message); }
+}
+function closeSupplier(){
+  currentSupplier = null;
+  document.getElementById('supplierListView').style.display = 'block';
+  document.getElementById('supplierDetailView').style.display = 'none';
+}
+
+/* --- supplier tasks --- */
+async function addSupTask(){
+  const title = document.getElementById('supTaskTitle').value.trim();
+  let deadline = document.getElementById('supTaskDeadline').value || null;
+  const priority = document.getElementById('supTaskPriority').value;
+  if(!title || !currentSupplier) return;
+  try{
+    const {data,error} = await sb.from('supplier_tasks').insert({supplier_id:currentSupplier.id, title, deadline, priority, done:false}).select().single();
+    if(error) throw error;
+    currentSupplier.tasks.push({id:data.id, title, deadline:deadline||'', priority, done:false});
+    document.getElementById('supTaskTitle').value=''; document.getElementById('supTaskDeadline').value='';
+    renderSupTasks();
+  }catch(e){ alert('Не удалось добавить задачу: '+e.message); }
+}
+async function toggleSupTask(id){
+  const t = currentSupplier.tasks.find(x=>x.id===id); const newDone=!t.done;
+  try{ const {error}=await sb.from('supplier_tasks').update({done:newDone}).eq('id',id); if(error) throw error; t.done=newDone; renderSupTasks(); }
+  catch(e){ alert('Не удалось обновить: '+e.message); }
+}
+async function deleteSupTask(id){
+  try{ const {error}=await sb.from('supplier_tasks').delete().eq('id',id); if(error) throw error; currentSupplier.tasks=currentSupplier.tasks.filter(x=>x.id!==id); renderSupTasks(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
+}
+function renderSupTasks(){
+  const list = document.getElementById('supTaskList');
+  if(currentSupplier.tasks.length===0){ list.innerHTML=`<div class="empty">Пока нет задач.</div>`; return; }
+  const sorted=[...currentSupplier.tasks].sort((a,b)=>{ if(a.done!==b.done) return a.done?1:-1; return (a.deadline||'9999').localeCompare(b.deadline||'9999'); });
+  const todayStr=todayISO(); const pl={low:'Низкий',medium:'Средний',high:'Высокий'};
+  list.innerHTML = sorted.map(t=>{
+    const overdue = !t.done && t.deadline && t.deadline<todayStr;
+    return `<div class="task ${t.done?'done':''} ${overdue?'overdue':''}">
+      <input type="checkbox" ${t.done?'checked':''} onchange="toggleSupTask('${t.id}')">
+      <div class="title">${escapeHtml(t.title)}</div>
+      <div class="meta">${t.deadline?`<span class="mono">${formatDate(t.deadline)}</span>`:''}<span class="badge ${t.priority}">${pl[t.priority]}</span></div>
+      <button class="icon-btn" onclick="deleteSupTask('${t.id}')">✕</button>
     </div>`;
   }).join('');
 }
 
-/* ---------------- CARS ---------------- */
-function renderTemplates(){
-  renderTplList('own', 'tplStepsOwn');
-  renderTplList('contracted', 'tplStepsContracted');
+/* --- supplier templates --- */
+function renderSupTemplates(){
+  renderSupTplList('own','supTplStepsOwn');
+  renderSupTplList('contracted','supTplStepsContracted');
 }
-function renderTplList(type, elId){
+function renderSupTplList(type, elId){
   const el = document.getElementById(elId);
-  const steps = state.templates[type];
-  if(steps.length===0){
-    el.innerHTML = `<div class="empty" style="padding:12px 0;">Нет шагов</div>`;
-    return;
-  }
-  el.innerHTML = steps.map((s,i)=>`
-    <div class="tpl-step">
-      <span class="num">${i+1}.</span>
-      <span class="txt">${escapeHtml(s.text)}</span>
-      <button class="icon-btn" onclick="removeTplStep('${type}','${s.id}')">✕</button>
-    </div>`).join('');
+  const steps = currentSupplier.templates[type];
+  if(steps.length===0){ el.innerHTML=`<div class="empty" style="padding:12px 0;">Нет шагов</div>`; return; }
+  el.innerHTML = steps.map((s,i)=>`<div class="tpl-step"><span class="num">${i+1}.</span><span class="txt">${escapeHtml(s.text)}</span>
+    <button class="icon-btn" onclick="removeSupTplStep('${type}','${s.id}')">✕</button></div>`).join('');
 }
-async function addTplStep(type){
-  const inputId = type==='own' ? 'tplInputOwn' : 'tplInputContracted';
+async function addSupTplStep(type){
+  const inputId = type==='own' ? 'supTplInputOwn' : 'supTplInputContracted';
   const input = document.getElementById(inputId);
-  const text = input.value.trim();
-  if(!text) return;
-  const nextOrder = state.templates[type].length + 1;
+  const text = input.value.trim(); if(!text) return;
+  const nextOrder = currentSupplier.templates[type].length + 1;
   try{
-    const {data, error} = await sb.from('checklist_templates').insert({type, step_order:nextOrder, text}).select().single();
+    const {data,error} = await sb.from('checklist_templates').insert({supplier_id:currentSupplier.id, type, step_order:nextOrder, text}).select().single();
     if(error) throw error;
-    state.templates[type].push({id:data.id, text});
-    input.value = '';
-    renderTemplates();
-    renderCars();
+    currentSupplier.templates[type].push({id:data.id, text});
+    input.value='';
+    renderSupTemplates(); renderSupCars();
   }catch(e){ alert('Не удалось добавить шаг: '+e.message); }
 }
-async function removeTplStep(type, stepId){
+async function removeSupTplStep(type, stepId){
   try{
     const {error} = await sb.from('checklist_templates').delete().eq('id', stepId);
     if(error) throw error;
-    state.templates[type] = state.templates[type].filter(s=>s.id!==stepId);
-    state.cars.forEach(c=>{ delete c.checks[stepId]; });
-    renderTemplates();
-    renderCars();
+    currentSupplier.templates[type] = currentSupplier.templates[type].filter(s=>s.id!==stepId);
+    currentSupplier.cars.forEach(c=>{ delete c.checks[stepId]; });
+    renderSupTemplates(); renderSupCars();
   }catch(e){ alert('Не удалось удалить шаг: '+e.message); }
 }
 
-async function addCar(){
-  const name = document.getElementById('carName').value.trim();
-  const plate = document.getElementById('carPlate').value.trim();
-  const type = document.getElementById('carType').value;
-  if(!name) return;
+/* --- supplier cars --- */
+async function addSupCar(){
+  const name = document.getElementById('supCarName').value.trim();
+  const plate = document.getElementById('supCarPlate').value.trim();
+  const type = document.getElementById('supCarType').value;
+  if(!name || !currentSupplier) return;
   try{
-    const {data, error} = await sb.from('cars').insert({name, plate:plate||null, type}).select().single();
+    const {data,error} = await sb.from('cars').insert({supplier_id:currentSupplier.id, name, plate:plate||null, type}).select().single();
     if(error) throw error;
-    state.cars.push({id:data.id, name, plate, type, checks:{}, history:[]});
-    document.getElementById('carName').value = '';
-    document.getElementById('carPlate').value = '';
-    renderCars();
+    currentSupplier.cars.push({id:data.id, name, plate, type, checks:{}, history:[]});
+    document.getElementById('supCarName').value=''; document.getElementById('supCarPlate').value='';
+    renderSupCars();
   }catch(e){ alert('Не удалось добавить машину: '+e.message); }
 }
-async function deleteCar(id){
-  try{
-    const {error} = await sb.from('cars').delete().eq('id', id);
-    if(error) throw error;
-    state.cars = state.cars.filter(x=>x.id!==id);
-    renderCars();
-  }catch(e){ alert('Не удалось удалить машину: '+e.message); }
+async function deleteSupCar(id){
+  try{ const {error}=await sb.from('cars').delete().eq('id',id); if(error) throw error; currentSupplier.cars=currentSupplier.cars.filter(x=>x.id!==id); renderSupCars(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
 }
-async function toggleCarCheck(carId, stepId){
-  const car = state.cars.find(c=>c.id===carId);
-  const newVal = !car.checks[stepId];
+async function toggleSupCarCheck(carId, stepId){
+  const car = currentSupplier.cars.find(c=>c.id===carId); const newVal=!car.checks[stepId];
   try{
-    const {error} = await sb.from('car_checks').upsert(
-      {car_id:carId, step_id:stepId, done:newVal},
-      {onConflict:'car_id,step_id'}
-    );
+    const {error} = await sb.from('car_checks').upsert({car_id:carId, step_id:stepId, done:newVal}, {onConflict:'car_id,step_id'});
     if(error) throw error;
-    car.checks[stepId] = newVal;
-    renderCars();
-  }catch(e){ alert('Не удалось сохранить отметку: '+e.message); }
+    car.checks[stepId] = newVal; renderSupCars();
+  }catch(e){ alert('Не удалось сохранить: '+e.message); }
 }
-async function finishCarCycle(carId){
-  const car = state.cars.find(c=>c.id===carId);
-  const today = todayISO();
+async function finishSupCarCycle(carId){
+  const car = currentSupplier.cars.find(c=>c.id===carId); const today = todayISO();
   try{
-    const {error: e1} = await sb.from('car_history').insert({car_id:carId, completed_at:today});
-    if(e1) throw e1;
-    const {error: e2} = await sb.from('car_checks').delete().eq('car_id', carId);
-    if(e2) throw e2;
-    car.history.unshift(today);
-    car.history = car.history.slice(0,5);
-    car.checks = {};
-    renderCars();
+    const {error:e1} = await sb.from('car_history').insert({car_id:carId, completed_at:today}); if(e1) throw e1;
+    const {error:e2} = await sb.from('car_checks').delete().eq('car_id', carId); if(e2) throw e2;
+    car.history.unshift(today); car.history = car.history.slice(0,5); car.checks = {};
+    renderSupCars();
   }catch(e){ alert('Не удалось завершить ТО: '+e.message); }
 }
-function renderCars(){
-  const grid = document.getElementById('carGrid');
-  if(state.cars.length===0){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Добавьте машину, чтобы отслеживать чек-лист.</div>`;
-    return;
-  }
+function renderSupCars(){
+  const grid = document.getElementById('supCarGrid');
+  if(currentSupplier.cars.length===0){ grid.innerHTML=`<div class="empty" style="grid-column:1/-1;">Добавьте машину.</div>`; return; }
   const typeLabel = {own:'Своя', contracted:'Привлечённая'};
-  grid.innerHTML = state.cars.map(car=>{
-    const steps = state.templates[car.type] || [];
+  grid.innerHTML = currentSupplier.cars.map(car=>{
+    const steps = currentSupplier.templates[car.type] || [];
     const doneCount = steps.filter(s=>car.checks[s.id]).length;
     const total = steps.length || 1;
     const pct = Math.round((doneCount/total)*100);
     const allDone = steps.length>0 && doneCount===steps.length;
-    const checklistHtml = steps.length===0
-      ? `<div class="empty" style="padding:8px 0;">В шаблоне нет шагов</div>`
-      : steps.map(s=>`
-        <div class="car-check-row ${car.checks[s.id]?'checked':''}">
-          <input type="checkbox" ${car.checks[s.id]?'checked':''} onchange="toggleCarCheck('${car.id}','${s.id}')">
-          <span class="txt">${escapeHtml(s.text)}</span>
-        </div>`).join('');
-    const historyHtml = car.history.length>0
-      ? `Пройдено: ${car.history.map(d=>formatDate(d)).join(', ')}`
-      : `Ещё ни разу не пройден полностью`;
+    const checklistHtml = steps.length===0 ? `<div class="empty" style="padding:8px 0;">В шаблоне нет шагов</div>` :
+      steps.map(s=>`<div class="car-check-row ${car.checks[s.id]?'checked':''}">
+        <input type="checkbox" ${car.checks[s.id]?'checked':''} onchange="toggleSupCarCheck('${car.id}','${s.id}')">
+        <span class="txt">${escapeHtml(s.text)}</span></div>`).join('');
+    const historyHtml = car.history.length>0 ? `Пройдено: ${car.history.map(d=>formatDate(d)).join(', ')}` : `Ещё ни разу не пройден полностью`;
     return `<div class="car-card">
       <div class="car-card-head">
-        <div>
-          <h3>${escapeHtml(car.name)}</h3>
-          ${car.plate ? `<div class="plate">${escapeHtml(car.plate)}</div>` : ''}
-        </div>
+        <div><h3>${escapeHtml(car.name)}</h3>${car.plate?`<div class="plate">${escapeHtml(car.plate)}</div>`:''}</div>
         <span class="badge ${car.type}">${typeLabel[car.type]}</span>
       </div>
       <div class="car-progress"><div class="fill" style="width:${pct}%"></div></div>
       <div class="car-checklist">${checklistHtml}</div>
       <div class="car-card-actions">
-        <button class="amber-btn" ${allDone?'':'disabled'} onclick="finishCarCycle('${car.id}')">Завершить ТО</button>
-        <button class="ghost danger" onclick="deleteCar('${car.id}')">Удалить</button>
+        <button class="amber-btn" ${allDone?'':'disabled'} onclick="finishSupCarCycle('${car.id}')">Завершить ТО</button>
+        <button class="ghost danger" onclick="deleteSupCar('${car.id}')">Удалить</button>
       </div>
       <div class="car-history">${historyHtml}</div>
     </div>`;
   }).join('');
 }
 
-/* ---------------- PROJECTS ---------------- */
+/* ============ PROJECTS ============ */
 function buildProjSwatches(){
   const el = document.getElementById('projSwatches');
   el.innerHTML = PROJ_COLORS.map(c=>`<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
-  el.querySelectorAll('.swatch').forEach(s=>{
-    s.onclick = ()=>{ selectedProjColor = s.dataset.c; markSwatch(el, s); };
-  });
+  el.querySelectorAll('.swatch').forEach(s=>{ s.onclick=()=>{ selectedProjColor=s.dataset.c; markSwatch(el,s); }; });
   markSwatch(el, el.firstChild);
 }
 async function addProject(){
-  const name = document.getElementById('projName').value.trim();
-  if(!name) return;
+  const name = document.getElementById('projName').value.trim(); if(!name) return;
   try{
-    const {data, error} = await sb.from('projects').insert({name, color:selectedProjColor}).select().single();
+    const {data,error} = await sb.from('projects').insert({name, color:selectedProjColor}).select().single();
     if(error) throw error;
     state.projects.push({id:data.id, name, color:selectedProjColor, entries:[], running:null});
-    document.getElementById('projName').value = '';
-    renderProjects();
-    renderWeekChart();
+    document.getElementById('projName').value=''; renderProjects(); renderWeekChart();
   }catch(e){ alert('Не удалось добавить проект: '+e.message); }
 }
 async function toggleTimer(id){
   const p = state.projects.find(x=>x.id===id);
   try{
     if(p.running){
-      const elapsedMin = Math.round((Date.now() - p.running)/60000);
+      const elapsedMin = Math.round((Date.now()-p.running)/60000);
       if(elapsedMin>0){
-        const {error: e1} = await sb.from('time_entries').insert({project_id:id, entry_date:todayISO(), minutes:elapsedMin});
+        const {error:e1} = await sb.from('time_entries').insert({project_id:id, entry_date:todayISO(), minutes:elapsedMin});
         if(e1) throw e1;
         p.entries.push({date:todayISO(), minutes:elapsedMin});
       }
-      const {error: e2} = await sb.from('projects').update({running_since:null}).eq('id', id);
-      if(e2) throw e2;
+      const {error:e2} = await sb.from('projects').update({running_since:null}).eq('id',id); if(e2) throw e2;
       p.running = null;
     } else {
       for(const pr of state.projects){
         if(pr.running && pr.id!==id){
           const em = Math.round((Date.now()-pr.running)/60000);
-          if(em>0){
-            await sb.from('time_entries').insert({project_id:pr.id, entry_date:todayISO(), minutes:em});
-            pr.entries.push({date:todayISO(), minutes:em});
-          }
+          if(em>0){ await sb.from('time_entries').insert({project_id:pr.id, entry_date:todayISO(), minutes:em}); pr.entries.push({date:todayISO(), minutes:em}); }
           await sb.from('projects').update({running_since:null}).eq('id', pr.id);
           pr.running = null;
         }
@@ -924,87 +1005,46 @@ async function toggleTimer(id){
       if(error) throw error;
       p.running = Date.now();
     }
-    renderProjects();
-    renderWeekChart();
+    renderProjects(); renderWeekChart();
   }catch(e){ alert('Ошибка таймера: '+e.message); }
 }
 async function deleteProject(id){
-  try{
-    const {error} = await sb.from('projects').delete().eq('id', id);
-    if(error) throw error;
-    state.projects = state.projects.filter(x=>x.id!==id);
-    renderProjects();
-    renderWeekChart();
-  }catch(e){ alert('Не удалось удалить проект: '+e.message); }
+  try{ const {error}=await sb.from('projects').delete().eq('id',id); if(error) throw error; state.projects=state.projects.filter(x=>x.id!==id); renderProjects(); renderWeekChart(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
 }
-function projTotalMinutes(p){
-  let total = p.entries.reduce((s,e)=>s+e.minutes,0);
-  if(p.running){ total += Math.round((Date.now()-p.running)/60000); }
-  return total;
-}
-function fmtHM(min){
-  const h = Math.floor(min/60), m = min%60;
-  return `${h}ч ${String(m).padStart(2,'0')}м`;
-}
+function projTotalMinutes(p){ let total=p.entries.reduce((s,e)=>s+e.minutes,0); if(p.running) total += Math.round((Date.now()-p.running)/60000); return total; }
 function renderProjects(){
   const grid = document.getElementById('projGrid');
-  if(state.projects.length===0){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Добавьте проект, чтобы отслеживать время.</div>`;
-    return;
-  }
+  if(state.projects.length===0){ grid.innerHTML=`<div class="empty" style="grid-column:1/-1;">Добавьте проект.</div>`; return; }
   grid.innerHTML = state.projects.map(p=>{
     const total = projTotalMinutes(p);
-    return `<div class="proj-card">
-      <div class="bar" style="background:${p.color}"></div>
-      <h3>${escapeHtml(p.name)}</h3>
-      <div class="total">${fmtHM(total)}</div>
-      <div class="sub">${p.entries.length} записей ${p.running ? '· идёт сейчас' : ''}</div>
-      <div class="actions">
-        <button class="${p.running?'timer-active':''}" onclick="toggleTimer('${p.id}')">${p.running?'⏸ Стоп':'▶ Старт'}</button>
-        <button class="ghost danger" onclick="deleteProject('${p.id}')">Удалить</button>
-      </div>
-    </div>`;
+    return `<div class="proj-card"><div class="bar" style="background:${p.color}"></div><h3>${escapeHtml(p.name)}</h3>
+      <div class="total">${fmtHM(total)}</div><div class="sub">${p.entries.length} записей ${p.running?'· идёт сейчас':''}</div>
+      <div class="actions"><button class="${p.running?'timer-active':''}" onclick="toggleTimer('${p.id}')">${p.running?'⏸ Стоп':'▶ Старт'}</button>
+      <button class="ghost danger" onclick="deleteProject('${p.id}')">Удалить</button></div></div>`;
   }).join('');
 }
 function renderWeekChart(){
   const el = document.getElementById('weekChart');
-  if(state.projects.length===0){
-    el.innerHTML = `<div class="empty">Нет данных за неделю.</div>`;
-    return;
-  }
-  const since = new Date(); since.setDate(since.getDate()-7);
-  const sinceStr = since.toISOString().slice(0,10);
+  if(state.projects.length===0){ el.innerHTML=`<div class="empty">Нет данных.</div>`; return; }
+  const since=new Date(); since.setDate(since.getDate()-7); const sinceStr=since.toISOString().slice(0,10);
   const totals = state.projects.map(p=>{
     let m = p.entries.filter(e=>e.date>=sinceStr).reduce((s,e)=>s+e.minutes,0);
     if(p.running) m += Math.round((Date.now()-p.running)/60000);
     return {name:p.name, color:p.color, minutes:m};
   });
   const max = Math.max(1, ...totals.map(t=>t.minutes));
-  el.innerHTML = totals.map(t=>`
-    <div class="week-row">
-      <div class="name">${escapeHtml(t.name)}</div>
-      <div class="track"><div class="fill" style="width:${(t.minutes/max*100)}%; background:${t.color}"></div></div>
-      <div class="hrs">${fmtHM(t.minutes)}</div>
-    </div>`).join('');
+  el.innerHTML = totals.map(t=>`<div class="week-row"><div class="name">${escapeHtml(t.name)}</div>
+    <div class="track"><div class="fill" style="width:${(t.minutes/max*100)}%; background:${t.color}"></div></div>
+    <div class="hrs">${fmtHM(t.minutes)}</div></div>`).join('');
 }
 
-function escapeHtml(s){
-  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
-}
-
+/* ============ STARTUP ============ */
 (async function(){
-  try{
-    await loadAll();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    init();
-  }catch(e){
-    document.getElementById('loading').style.display = 'none';
-    const err = document.getElementById('loadError');
-    err.style.display = 'block';
-    err.textContent = 'Не удалось загрузить данные из базы: ' + e.message;
-  }
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){ await bootAfterAuth(); }
 })();
+document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.key==='Enter') submitAuth(); });
 </script>
 </body>
 </html>
