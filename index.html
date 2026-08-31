@@ -196,6 +196,7 @@
   /* ---- GAME ---- */
   .game-card{text-align:center; padding:28px 20px;}
   .game-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .hangman-svg{width:130px; height:140px; display:block; margin:0 auto 12px;}
   .game-theme{font-size:13px; color:var(--muted); background:var(--paper); padding:6px 14px; border-radius:20px; font-weight:600;}
   .game-word{font-size:32px; letter-spacing:10px; font-weight:600; margin:10px 0 18px; word-break:break-all;}
   .game-lives{font-size:18px; letter-spacing:6px; margin-bottom:8px; color:var(--rust);}
@@ -210,6 +211,12 @@
   .game-key.correct{background:var(--sage); color:#fff; border-color:var(--sage);}
   .game-key.wrong{background:#fff; color:var(--line); border-color:var(--line); opacity:.5;}
   .game-key:disabled{cursor:default;}
+  .lb-row{display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13.5px;}
+  .lb-row:last-child{border-bottom:none;}
+  .lb-rank{width:22px; font-family:'IBM Plex Mono', monospace; color:var(--muted); font-size:12px; flex-shrink:0;}
+  .lb-row.me{background:#FCEBD2; border-radius:6px; padding-left:8px;}
+  .lb-name{flex:1; font-weight:500;}
+  .lb-wins{font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--sage);}
 </style>
 </head>
 <body>
@@ -260,10 +267,26 @@
           <div class="game-theme" id="gameTheme"></div>
           <button class="ghost" onclick="newGame()">🔄 Новое слово</button>
         </div>
+        <svg class="hangman-svg" viewBox="0 0 160 170" xmlns="http://www.w3.org/2000/svg">
+          <line x1="10" y1="160" x2="110" y2="160" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+          <line x1="35" y1="160" x2="35" y2="15" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+          <line x1="35" y1="15" x2="100" y2="15" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+          <line x1="100" y1="15" x2="100" y2="32" stroke="var(--ink)" stroke-width="3"/>
+          <circle id="hm-part1" cx="100" cy="45" r="13" fill="none" stroke="var(--rust)" stroke-width="4" style="display:none;"/>
+          <line id="hm-part2" x1="100" y1="58" x2="100" y2="100" stroke="var(--rust)" stroke-width="4" stroke-linecap="round" style="display:none;"/>
+          <line id="hm-part3" x1="100" y1="68" x2="80" y2="88" stroke="var(--rust)" stroke-width="4" stroke-linecap="round" style="display:none;"/>
+          <line id="hm-part4" x1="100" y1="68" x2="120" y2="88" stroke="var(--rust)" stroke-width="4" stroke-linecap="round" style="display:none;"/>
+          <line id="hm-part5" x1="100" y1="100" x2="82" y2="130" stroke="var(--rust)" stroke-width="4" stroke-linecap="round" style="display:none;"/>
+          <line id="hm-part6" x1="100" y1="100" x2="118" y2="130" stroke="var(--rust)" stroke-width="4" stroke-linecap="round" style="display:none;"/>
+        </svg>
         <div class="game-word mono" id="gameWordDisplay"></div>
         <div class="game-lives" id="gameLives"></div>
         <div class="game-status" id="gameStatus"></div>
         <div class="game-keyboard" id="gameKeyboard"></div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h3 style="font-size:15px; margin-bottom:14px;">🏆 Таблица лидеров — угадано слов за всё время</h3>
+        <div id="leaderboardList"></div>
       </div>
     </div>
 
@@ -702,7 +725,8 @@ const WORD_BANK = [
 ];
 const RU_ALPHABET = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('');
 const MAX_WRONG = 6;
-let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0;
+let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0, winRecorded = false;
+let leaderboard = [];
 
 function newGame(){
   const entry = WORD_BANK[Math.floor(Math.random()*WORD_BANK.length)];
@@ -710,6 +734,7 @@ function newGame(){
   gameCategory = entry.category;
   guessedSet = new Set();
   wrongCount = 0;
+  winRecorded = false;
   renderGame();
 }
 function guessLetter(letter){
@@ -725,10 +750,17 @@ function renderGame(){
   document.getElementById('gameTheme').textContent = `Тема: ${gameCategory} · ${gameWord.length} букв`;
   document.getElementById('gameWordDisplay').textContent = gameWord.split('').map(ch=>guessedSet.has(ch)?ch:'_').join(' ');
   document.getElementById('gameLives').textContent = '●'.repeat(Math.max(0,MAX_WRONG-wrongCount)) + '○'.repeat(wrongCount);
+  for(let i=1;i<=MAX_WRONG;i++){
+    document.getElementById('hm-part'+i).style.display = wrongCount>=i ? 'inline' : 'none';
+  }
 
   const statusEl = document.getElementById('gameStatus');
   statusEl.className = 'game-status';
-  if(isWon()){ statusEl.textContent = '🎉 Угадали! Отличная работа.'; statusEl.classList.add('win'); }
+  if(isWon()){
+    statusEl.textContent = '🎉 Угадали! Отличная работа.';
+    statusEl.classList.add('win');
+    if(!winRecorded){ winRecorded = true; recordWin(); }
+  }
   else if(isLost()){ statusEl.textContent = `😅 Не в этот раз. Слово было: ${gameWord}`; statusEl.classList.add('lose'); }
   else { statusEl.textContent = ''; }
 
@@ -737,6 +769,33 @@ function renderGame(){
     let cls = '';
     if(guessedSet.has(l)) cls = gameWord.includes(l) ? 'correct' : 'wrong';
     return `<button class="game-key ${cls}" ${(guessedSet.has(l)||over)?'disabled':''} onclick="guessLetter('${l}')">${l}</button>`;
+  }).join('');
+}
+async function recordWin(){
+  try{
+    const {data: existing} = await sb.from('game_scores').select('wins').eq('user_id', currentUser.id).maybeSingle();
+    const newWins = (existing?.wins || 0) + 1;
+    const {error} = await sb.from('game_scores').upsert({user_id: currentUser.id, wins:newWins, updated_at:new Date().toISOString()});
+    if(error) throw error;
+    await loadLeaderboard();
+    renderLeaderboard();
+  }catch(e){ console.error('Не удалось сохранить результат:', e.message); }
+}
+async function loadLeaderboard(){
+  const {data, error} = await sb.from('game_scores').select('user_id, wins').order('wins', {ascending:false}).limit(15);
+  if(error){ console.error(error); return; }
+  leaderboard = data;
+}
+function renderLeaderboard(){
+  const el = document.getElementById('leaderboardList');
+  if(leaderboard.length===0){ el.innerHTML = `<div class="empty">Пока никто не угадал ни одного слова — будь первым!</div>`; return; }
+  el.innerHTML = leaderboard.map((row, i)=>{
+    const isMe = row.user_id === currentUser.id;
+    return `<div class="lb-row ${isMe?'me':''}">
+      <span class="lb-rank">#${i+1}</span>
+      <span class="lb-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''}</span>
+      <span class="lb-wins">${row.wins}</span>
+    </div>`;
   }).join('');
 }
 
@@ -768,6 +827,7 @@ function initApp(){
   populateAssignDropdowns();
   renderAssignLists();
   newGame();
+  loadLeaderboard().then(renderLeaderboard);
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
