@@ -151,6 +151,13 @@
   .car-check-row input{margin-top:2px; width:16px; height:16px; accent-color:var(--sage); cursor:pointer; flex-shrink:0;}
   .car-check-row.checked .txt{text-decoration:line-through; color:var(--muted);}
   .car-history{font-size:10.5px; color:var(--muted); margin-top:8px; border-top:1px dashed var(--line); padding-top:8px;}
+  .car-note{font-size:12px; margin-top:10px; border-top:1px dashed var(--line); padding-top:10px;}
+  .car-note .note-label{font-size:10px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:4px; display:flex; align-items:center; justify-content:space-between;}
+  .car-note .note-text{color:var(--ink); white-space:pre-wrap;}
+  .car-note .note-text.placeholder{color:var(--muted); font-style:italic;}
+  .car-note textarea{width:100%; font-family:'IBM Plex Sans', sans-serif; font-size:12.5px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical; min-height:52px;}
+  .car-note .note-actions{display:flex; gap:6px; margin-top:6px;}
+  .tag-chip{font-size:10.5px; color:var(--muted); font-family:'IBM Plex Mono', monospace;}
   .car-card-actions{display:flex; gap:8px; margin-top:10px;}
   .add-car-form{margin-top:18px;}
 
@@ -215,6 +222,7 @@
     <button class="tab active" data-tab="tasks">Задачи</button>
     <button class="tab" data-tab="inbox">Входящие <span class="count" id="inboxCount" style="display:none;"></span></button>
     <button class="tab" data-tab="suppliers">Поставщики</button>
+    <button class="tab" data-tab="assign">Назначения <span class="count" id="assignCount" style="display:none;"></span></button>
     <button class="tab" data-tab="schedule">Расписание</button>
     <button class="tab" data-tab="projects">Проекты и время</button>
   </div>
@@ -331,6 +339,36 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-assign">
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; margin-bottom:14px;">Отправить задачу</h3>
+        <div class="form-row">
+          <select id="assignSupplier"></select>
+          <select id="assignTo"></select>
+        </div>
+        <div class="task-add" style="margin-top:0;">
+          <input type="text" id="assignTitle" placeholder="Текст задачи...">
+          <input type="date" id="assignDeadline">
+          <select id="assignPriority">
+            <option value="low">Низкий</option>
+            <option value="medium" selected>Средний</option>
+            <option value="high">Высокий</option>
+          </select>
+          <button onclick="sendAssignedTask()">Отправить</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; margin-bottom:14px;">Назначено мне</h3>
+        <div class="task-list" id="assignedToMeList"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:15px; margin-bottom:14px;">Я назначил</h3>
+        <div class="task-list" id="assignedByMeList"></div>
+      </div>
+    </div>
+
     <div class="panel" id="panel-schedule">
       <div class="day-tabs" id="dayTabs"></div>
       <div class="card">
@@ -404,6 +442,9 @@ let authMode = 'login';
 let state = { schedule:{}, tasks:[], projects:[], inbox:[] };
 let suppliers = [];
 let myMemberships = new Set();
+let allProfiles = [];
+let assignedToMe = [];
+let assignedByMe = [];
 let currentSupplier = null; // {id, name, templates:{own,contracted}, cars:[], tasks:[]}
 let selectedDay = DAY_KEYS[ (new Date().getDay()+6)%7 ];
 let editingBlockId = null;
@@ -492,6 +533,8 @@ async function bootAfterAuth(){
   try{
     await loadPersonalData();
     await loadSuppliers();
+    await loadProfiles();
+    await loadAssignments();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
     initApp();
@@ -537,6 +580,100 @@ async function loadSuppliers(){
   myMemberships = new Set(memR.data.map(m=>m.supplier_id));
 }
 
+async function loadProfiles(){
+  const {data, error} = await sb.from('profiles').select('id,username').order('username');
+  if(error) throw error;
+  allProfiles = data;
+}
+function usernameById(id){
+  const p = allProfiles.find(x=>x.id===id);
+  return p ? p.username : '—';
+}
+async function loadAssignments(){
+  const [toMeR, byMeR] = await Promise.all([
+    sb.from('supplier_tasks').select('*, suppliers(name)').eq('assigned_to', currentUser.id),
+    sb.from('supplier_tasks').select('*, suppliers(name)').eq('created_by', currentUser.id).not('assigned_to','is',null),
+  ]);
+  if(toMeR.error) throw toMeR.error;
+  if(byMeR.error) throw byMeR.error;
+  assignedToMe = toMeR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done, supplierName: t.suppliers?.name||'?', assignedBy: t.assigned_by}));
+  assignedByMe = byMeR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done, supplierName: t.suppliers?.name||'?', assignedTo: t.assigned_to}));
+}
+function populateAssignDropdowns(){
+  const supSel = document.getElementById('assignSupplier');
+  supSel.innerHTML = suppliers.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  const toSel = document.getElementById('assignTo');
+  toSel.innerHTML = allProfiles.filter(p=>p.id!==currentUser.id).map(p=>`<option value="${p.id}">${escapeHtml(p.username)}</option>`).join('');
+}
+async function sendAssignedTask(){
+  const supplierId = document.getElementById('assignSupplier').value;
+  const toId = document.getElementById('assignTo').value;
+  const title = document.getElementById('assignTitle').value.trim();
+  let deadline = document.getElementById('assignDeadline').value || null;
+  const priority = document.getElementById('assignPriority').value;
+  if(!supplierId || !toId || !title){ alert('Заполните поставщика, получателя и текст задачи'); return; }
+  try{
+    const {data, error} = await sb.from('supplier_tasks').insert({
+      supplier_id: supplierId, title, deadline, priority, done:false, assigned_to: toId
+    }).select('*, suppliers(name)').single();
+    if(error) throw error;
+    assignedByMe.unshift({id:data.id, title, deadline:deadline||'', priority, done:false, supplierName:data.suppliers?.name||'?', assignedTo:toId});
+    document.getElementById('assignTitle').value = '';
+    document.getElementById('assignDeadline').value = '';
+    renderAssignLists();
+  }catch(e){ alert('Не удалось отправить задачу: '+e.message); }
+}
+async function toggleAssignedTask(id, list){
+  const arr = list==='toMe' ? assignedToMe : assignedByMe;
+  const t = arr.find(x=>x.id===id); const newDone=!t.done;
+  try{ const {error}=await sb.from('supplier_tasks').update({done:newDone}).eq('id',id); if(error) throw error; t.done=newDone; renderAssignLists(); }
+  catch(e){ alert('Не удалось обновить: '+e.message); }
+}
+async function deleteAssignedTask(id){
+  try{ const {error}=await sb.from('supplier_tasks').delete().eq('id',id); if(error) throw error; assignedByMe=assignedByMe.filter(x=>x.id!==id); renderAssignLists(); }
+  catch(e){ alert('Не удалось удалить: '+e.message); }
+}
+function renderAssignLists(){
+  const pl = {low:'Низкий', medium:'Средний', high:'Высокий'};
+  const countEl = document.getElementById('assignCount');
+  const openCount = assignedToMe.filter(t=>!t.done).length;
+  countEl.style.display = openCount>0 ? 'inline-block' : 'none';
+  countEl.textContent = openCount;
+
+  const toMeEl = document.getElementById('assignedToMeList');
+  toMeEl.innerHTML = assignedToMe.length===0 ? `<div class="empty">Пока ничего не назначено.</div>` :
+    assignedToMe.map(t=>{
+      const overdue = !t.done && t.deadline && t.deadline < todayISO();
+      return `<div class="task ${t.done?'done':''} ${overdue?'overdue':''}">
+        <input type="checkbox" ${t.done?'checked':''} onchange="toggleAssignedTask('${t.id}','toMe')">
+        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="meta">
+          <span class="tag-chip">${escapeHtml(t.supplierName)}</span>
+          <span class="tag-chip">от ${escapeHtml(usernameById(t.assignedBy))}</span>
+          ${t.deadline?`<span class="mono">${formatDate(t.deadline)}</span>`:''}
+          <span class="badge ${t.priority}">${pl[t.priority]}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+  const byMeEl = document.getElementById('assignedByMeList');
+  byMeEl.innerHTML = assignedByMe.length===0 ? `<div class="empty">Вы пока никому не назначали задачи.</div>` :
+    assignedByMe.map(t=>{
+      const overdue = !t.done && t.deadline && t.deadline < todayISO();
+      return `<div class="task ${t.done?'done':''} ${overdue?'overdue':''}">
+        <input type="checkbox" ${t.done?'checked':''} onchange="toggleAssignedTask('${t.id}','byMe')">
+        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="meta">
+          <span class="tag-chip">${escapeHtml(t.supplierName)}</span>
+          <span class="tag-chip">кому: ${escapeHtml(usernameById(t.assignedTo))}</span>
+          ${t.deadline?`<span class="mono">${formatDate(t.deadline)}</span>`:''}
+          <span class="badge ${t.priority}">${pl[t.priority]}</span>
+        </div>
+        <button class="icon-btn" onclick="deleteAssignedTask('${t.id}')">✕</button>
+      </div>`;
+    }).join('');
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -563,6 +700,8 @@ function initApp(){
   buildDayTabs(); buildHours(); buildLegend(); buildBlockSwatches(); buildProjSwatches();
   renderSchedule(); renderTasks(); renderInbox(); renderProjects(); renderWeekChart();
   renderSupplierList();
+  populateAssignDropdowns();
+  renderAssignLists();
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
@@ -802,7 +941,7 @@ async function openSupplier(id){
       const checks = {};
       (c.car_checks||[]).forEach(ck=>{ checks[ck.step_id]=ck.done; });
       const history = (c.car_history||[]).map(h=>h.completed_at).sort().reverse().slice(0,5);
-      return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, checks, history};
+      return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, note:c.note||'', checks, history};
     });
 
     const tasks = tasksR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done}));
@@ -993,6 +1132,7 @@ async function finishSupCarCycle(carId){
     renderSupCars();
   }catch(e){ alert('Не удалось завершить ТО: '+e.message); }
 }
+let editingCarNoteId = null;
 function renderSupCars(){
   const grid = document.getElementById('supCarGrid');
   if(currentSupplier.cars.length===0){ grid.innerHTML=`<div class="empty" style="grid-column:1/-1;">Добавьте машину.</div>`; return; }
@@ -1008,6 +1148,24 @@ function renderSupCars(){
         <input type="checkbox" ${car.checks[s.id]?'checked':''} onchange="toggleSupCarCheck('${car.id}','${s.id}')">
         <span class="txt">${escapeHtml(s.text)}</span></div>`).join('');
     const historyHtml = car.history.length>0 ? `Пройдено: ${car.history.map(d=>formatDate(d)).join(', ')}` : `Ещё ни разу не пройден полностью`;
+
+    let noteHtml;
+    if(car.id === editingCarNoteId){
+      noteHtml = `<div class="car-note">
+        <div class="note-label">Комментарий</div>
+        <textarea id="carNoteEdit_${car.id}">${escapeHtml(car.note||'')}</textarea>
+        <div class="note-actions">
+          <button onclick="saveCarNote('${car.id}')">Сохранить</button>
+          <button class="ghost" onclick="cancelEditCarNote()">Отмена</button>
+        </div>
+      </div>`;
+    } else {
+      noteHtml = `<div class="car-note">
+        <div class="note-label">Комментарий <button class="icon-btn" onclick="startEditCarNote('${car.id}')" title="Редактировать">✎</button></div>
+        <div class="note-text ${car.note?'':'placeholder'}">${car.note ? escapeHtml(car.note) : 'Нет комментария — например, простой или задержка'}</div>
+      </div>`;
+    }
+
     return `<div class="car-card">
       <div class="car-card-head">
         <div><h3>${escapeHtml(car.name)}</h3>${car.plate?`<div class="plate">${escapeHtml(car.plate)}</div>`:''}</div>
@@ -1020,8 +1178,23 @@ function renderSupCars(){
         <button class="ghost danger" onclick="deleteSupCar('${car.id}')">Удалить</button>
       </div>
       <div class="car-history">${historyHtml}</div>
+      ${noteHtml}
     </div>`;
   }).join('');
+}
+function startEditCarNote(carId){ editingCarNoteId = carId; renderSupCars(); }
+function cancelEditCarNote(){ editingCarNoteId = null; renderSupCars(); }
+async function saveCarNote(carId){
+  const ta = document.getElementById('carNoteEdit_'+carId);
+  const newNote = ta.value.trim();
+  try{
+    const {error} = await sb.from('cars').update({note: newNote || null}).eq('id', carId);
+    if(error) throw error;
+    const car = currentSupplier.cars.find(c=>c.id===carId);
+    car.note = newNote;
+    editingCarNoteId = null;
+    renderSupCars();
+  }catch(e){ alert('Не удалось сохранить комментарий: '+e.message); }
 }
 
 /* ============ PROJECTS ============ */
