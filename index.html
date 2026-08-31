@@ -192,6 +192,24 @@
   .sup-subtab.active{background:var(--ink); color:#fff; border-color:var(--ink);}
   .sup-subpanel{display:none;}
   .sup-subpanel.active{display:block;}
+
+  /* ---- GAME ---- */
+  .game-card{text-align:center; padding:28px 20px;}
+  .game-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .game-theme{font-size:13px; color:var(--muted); background:var(--paper); padding:6px 14px; border-radius:20px; font-weight:600;}
+  .game-word{font-size:32px; letter-spacing:10px; font-weight:600; margin:10px 0 18px; word-break:break-all;}
+  .game-lives{font-size:18px; letter-spacing:6px; margin-bottom:8px; color:var(--rust);}
+  .game-status{font-size:15px; font-weight:600; min-height:24px; margin-bottom:18px;}
+  .game-status.win{color:var(--sage);}
+  .game-status.lose{color:var(--rust);}
+  .game-keyboard{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:520px; margin:0 auto;}
+  .game-key{
+    width:36px; height:36px; padding:0; border-radius:6px; border:1px solid var(--line);
+    background:#fff; color:var(--ink); font-family:'IBM Plex Mono', monospace; font-size:14px; font-weight:600;
+  }
+  .game-key.correct{background:var(--sage); color:#fff; border-color:var(--sage);}
+  .game-key.wrong{background:#fff; color:var(--line); border-color:var(--line); opacity:.5;}
+  .game-key:disabled{cursor:default;}
 </style>
 </head>
 <body>
@@ -224,12 +242,11 @@
   </div>
 
   <div class="tabs" id="tabsBar">
-    <button class="tab active" data-tab="tasks">Задачи</button>
-    <button class="tab" data-tab="inbox">Входящие <span class="count" id="inboxCount" style="display:none;"></span></button>
-    <button class="tab" data-tab="suppliers">Поставщики</button>
+    <button class="tab active" data-tab="suppliers">Поставщики</button>
     <button class="tab" data-tab="assign">Назначения <span class="count" id="assignCount" style="display:none;"></span></button>
     <button class="tab" data-tab="schedule">Расписание</button>
     <button class="tab" data-tab="projects">Проекты и время</button>
+    <button class="tab" data-tab="game">Игра 🎲</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -237,35 +254,21 @@
 
   <div id="content" style="display:none;">
 
-    <div class="panel active" id="panel-tasks">
-      <div class="card">
-        <div class="task-add">
-          <input type="text" id="taskTitle" placeholder="Новая основная задача...">
-          <input type="date" id="taskDeadline">
-          <select id="taskPriority">
-            <option value="low">Низкий</option>
-            <option value="medium" selected>Средний</option>
-            <option value="high">Высокий</option>
-          </select>
-          <button onclick="addTask()">Добавить</button>
+    <div class="panel" id="panel-game">
+      <div class="card game-card">
+        <div class="game-top">
+          <div class="game-theme" id="gameTheme"></div>
+          <button class="ghost" onclick="newGame()">🔄 Новое слово</button>
         </div>
-        <div class="task-list" id="taskList"></div>
-      </div>
-    </div>
-
-    <div class="panel" id="panel-inbox">
-      <div class="card">
-        <div class="inbox-catch">
-          <input type="text" id="inboxInput" placeholder="Прилетело что-то срочное — кинь сюда, не отвлекаясь...">
-          <button onclick="addInbox()">Поймать</button>
-        </div>
-        <div class="inbox-hint">Разберёшь, когда закончишь текущую задачу.</div>
-        <div class="inbox-list" id="inboxList"></div>
+        <div class="game-word mono" id="gameWordDisplay"></div>
+        <div class="game-lives" id="gameLives"></div>
+        <div class="game-status" id="gameStatus"></div>
+        <div class="game-keyboard" id="gameKeyboard"></div>
       </div>
     </div>
 
     <!-- SUPPLIERS -->
-    <div class="panel" id="panel-suppliers">
+    <div class="panel active" id="panel-suppliers">
       <!-- list view -->
       <div id="supplierListView">
         <div class="card">
@@ -679,6 +682,64 @@ function renderAssignLists(){
     }).join('');
 }
 
+/* ============ GAME: угадай слово ============ */
+const WORD_BANK = [
+  {category:'Животные', word:'СЛОН'}, {category:'Животные', word:'ТИГР'}, {category:'Животные', word:'ЖИРАФ'},
+  {category:'Животные', word:'ЕНОТ'}, {category:'Животные', word:'БАРСУК'}, {category:'Животные', word:'ДЕЛЬФИН'},
+  {category:'Животные', word:'ПИНГВИН'}, {category:'Животные', word:'КРОКОДИЛ'}, {category:'Животные', word:'ВЕРБЛЮД'},
+  {category:'Города', word:'МОСКВА'}, {category:'Города', word:'АСТАНА'}, {category:'Города', word:'ПАРИЖ'},
+  {category:'Города', word:'ЛОНДОН'}, {category:'Города', word:'ТОКИО'}, {category:'Города', word:'СТАМБУЛ'},
+  {category:'Города', word:'КАИР'}, {category:'Города', word:'ДУБАЙ'}, {category:'Города', word:'АЛМАТЫ'},
+  {category:'Еда', word:'ПИЦЦА'}, {category:'Еда', word:'БОРЩ'}, {category:'Еда', word:'СУШИ'},
+  {category:'Еда', word:'ПЛОВ'}, {category:'Еда', word:'ШАШЛЫК'}, {category:'Еда', word:'ОМЛЕТ'},
+  {category:'Еда', word:'САЛАТ'}, {category:'Еда', word:'БЕШБАРМАК'},
+  {category:'Профессии', word:'ВРАЧ'}, {category:'Профессии', word:'УЧИТЕЛЬ'}, {category:'Профессии', word:'ПОВАР'},
+  {category:'Профессии', word:'ПИЛОТ'}, {category:'Профессии', word:'ЮРИСТ'}, {category:'Профессии', word:'МЕХАНИК'},
+  {category:'Транспорт', word:'ПОЕЗД'}, {category:'Транспорт', word:'САМОЛЕТ'}, {category:'Транспорт', word:'АВТОБУС'},
+  {category:'Транспорт', word:'ВЕЛОСИПЕД'}, {category:'Транспорт', word:'ТРАМВАЙ'}, {category:'Транспорт', word:'ВЕРТОЛЕТ'},
+  {category:'Спорт', word:'ФУТБОЛ'}, {category:'Спорт', word:'ТЕННИС'}, {category:'Спорт', word:'БОКС'},
+  {category:'Спорт', word:'ХОККЕЙ'}, {category:'Спорт', word:'ВОЛЕЙБОЛ'}, {category:'Спорт', word:'ПЛАВАНИЕ'},
+];
+const RU_ALPHABET = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('');
+const MAX_WRONG = 6;
+let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0;
+
+function newGame(){
+  const entry = WORD_BANK[Math.floor(Math.random()*WORD_BANK.length)];
+  gameWord = entry.word;
+  gameCategory = entry.category;
+  guessedSet = new Set();
+  wrongCount = 0;
+  renderGame();
+}
+function guessLetter(letter){
+  if(guessedSet.has(letter) || isGameOver()) return;
+  guessedSet.add(letter);
+  if(!gameWord.includes(letter)) wrongCount++;
+  renderGame();
+}
+function isWon(){ return gameWord.split('').every(ch=>guessedSet.has(ch)); }
+function isLost(){ return wrongCount >= MAX_WRONG; }
+function isGameOver(){ return isWon() || isLost(); }
+function renderGame(){
+  document.getElementById('gameTheme').textContent = `Тема: ${gameCategory} · ${gameWord.length} букв`;
+  document.getElementById('gameWordDisplay').textContent = gameWord.split('').map(ch=>guessedSet.has(ch)?ch:'_').join(' ');
+  document.getElementById('gameLives').textContent = '●'.repeat(Math.max(0,MAX_WRONG-wrongCount)) + '○'.repeat(wrongCount);
+
+  const statusEl = document.getElementById('gameStatus');
+  statusEl.className = 'game-status';
+  if(isWon()){ statusEl.textContent = '🎉 Угадали! Отличная работа.'; statusEl.classList.add('win'); }
+  else if(isLost()){ statusEl.textContent = `😅 Не в этот раз. Слово было: ${gameWord}`; statusEl.classList.add('lose'); }
+  else { statusEl.textContent = ''; }
+
+  const over = isGameOver();
+  document.getElementById('gameKeyboard').innerHTML = RU_ALPHABET.map(l=>{
+    let cls = '';
+    if(guessedSet.has(l)) cls = gameWord.includes(l) ? 'correct' : 'wrong';
+    return `<button class="game-key ${cls}" ${(guessedSet.has(l)||over)?'disabled':''} onclick="guessLetter('${l}')">${l}</button>`;
+  }).join('');
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -703,10 +764,11 @@ function initApp(){
   document.getElementById('newSupplierName').addEventListener('keydown', e=>{ if(e.key==='Enter') createSupplier(); });
 
   buildDayTabs(); buildHours(); buildLegend(); buildBlockSwatches(); buildProjSwatches();
-  renderSchedule(); renderTasks(); renderInbox(); renderProjects(); renderWeekChart();
+  renderSchedule(); renderProjects(); renderWeekChart();
   renderSupplierList();
   populateAssignDropdowns();
   renderAssignLists();
+  newGame();
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
