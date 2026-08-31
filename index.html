@@ -758,7 +758,6 @@ function initApp(){
     };
   });
 
-  document.getElementById('inboxInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addInbox(); });
   document.getElementById('supTplInputOwn').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('own'); });
   document.getElementById('supTplInputContracted').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('contracted'); });
   document.getElementById('newSupplierName').addEventListener('keydown', e=>{ if(e.key==='Enter') createSupplier(); });
