@@ -140,7 +140,12 @@
   .tpl-add-row{display:flex; gap:6px;}
   .tpl-add-row input{flex:1;}
   .car-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:14px;}
-  .car-card{border:1px solid var(--line); border-radius:10px; padding:16px; background:#fff;}
+  .car-card{border:1px solid var(--line); border-radius:10px; padding:16px; background:#fff; transition:border-color .15s, background .15s;}
+  .car-card.flagged{border:2px solid var(--rust); background:#FCEFEF;}
+  .flag-banner{background:var(--rust); color:#fff; font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px; margin-bottom:10px; display:inline-block; letter-spacing:.02em;}
+  .flag-btn{background:none; border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:4px 9px; font-size:14px; cursor:pointer; flex-shrink:0;}
+  .flag-btn.active{background:var(--rust); color:#fff; border-color:var(--rust);}
+  .flag-btn:hover{opacity:.85;}
   .car-card-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;}
   .car-card h3{font-size:15.5px;}
   .car-card .plate{font-size:11.5px; color:var(--muted); font-family:'IBM Plex Mono', monospace;}
@@ -941,7 +946,7 @@ async function openSupplier(id){
       const checks = {};
       (c.car_checks||[]).forEach(ck=>{ checks[ck.step_id]=ck.done; });
       const history = (c.car_history||[]).map(h=>h.completed_at).sort().reverse().slice(0,5);
-      return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, note:c.note||'', checks, history};
+      return {id:c.id, name:c.name, plate:c.plate||'', type:c.type, note:c.note||'', flagged:!!c.flagged, checks, history};
     });
 
     const tasks = tasksR.data.map(t=>({id:t.id, title:t.title, deadline:t.deadline||'', priority:t.priority, done:t.done}));
@@ -1137,7 +1142,8 @@ function renderSupCars(){
   const grid = document.getElementById('supCarGrid');
   if(currentSupplier.cars.length===0){ grid.innerHTML=`<div class="empty" style="grid-column:1/-1;">Добавьте машину.</div>`; return; }
   const typeLabel = {own:'Своя', contracted:'Привлечённая'};
-  grid.innerHTML = currentSupplier.cars.map(car=>{
+  const sortedCars = [...currentSupplier.cars].sort((a,b)=> (b.flagged?1:0) - (a.flagged?1:0));
+  grid.innerHTML = sortedCars.map(car=>{
     const steps = currentSupplier.templates[car.type] || [];
     const doneCount = steps.filter(s=>car.checks[s.id]).length;
     const total = steps.length || 1;
@@ -1166,10 +1172,16 @@ function renderSupCars(){
       </div>`;
     }
 
-    return `<div class="car-card">
+    const bannerHtml = car.flagged ? `<div class="flag-banner">⚠ Не забыть</div>` : '';
+
+    return `<div class="car-card ${car.flagged?'flagged':''}">
+      ${bannerHtml}
       <div class="car-card-head">
         <div><h3>${escapeHtml(car.name)}</h3>${car.plate?`<div class="plate">${escapeHtml(car.plate)}</div>`:''}</div>
-        <span class="badge ${car.type}">${typeLabel[car.type]}</span>
+        <div style="display:flex; gap:6px; align-items:flex-start;">
+          <span class="badge ${car.type}">${typeLabel[car.type]}</span>
+          <button class="flag-btn ${car.flagged?'active':''}" onclick="toggleSupCarFlag('${car.id}')" title="${car.flagged?'Убрать пометку':'Отметить, чтобы не забыть'}">⚑</button>
+        </div>
       </div>
       <div class="car-progress"><div class="fill" style="width:${pct}%"></div></div>
       <div class="car-checklist">${checklistHtml}</div>
@@ -1181,6 +1193,16 @@ function renderSupCars(){
       ${noteHtml}
     </div>`;
   }).join('');
+}
+async function toggleSupCarFlag(carId){
+  const car = currentSupplier.cars.find(c=>c.id===carId);
+  const newVal = !car.flagged;
+  try{
+    const {error} = await sb.from('cars').update({flagged:newVal}).eq('id', carId);
+    if(error) throw error;
+    car.flagged = newVal;
+    renderSupCars();
+  }catch(e){ alert('Не удалось изменить пометку: '+e.message); }
 }
 function startEditCarNote(carId){ editingCarNoteId = carId; renderSupCars(); }
 function cancelEditCarNote(){ editingCarNoteId = null; renderSupCars(); }
