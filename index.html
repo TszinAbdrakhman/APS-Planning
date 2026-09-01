@@ -227,9 +227,10 @@
   .horse-lane{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
   .horse-lane .suit-tag{width:74px; flex-shrink:0; font-size:13px; font-weight:600; display:flex; align-items:center; gap:5px;}
   .horse-lane .lane-track{flex:1; position:relative; height:26px; background:var(--paper); border-radius:6px; overflow:hidden;}
-  .horse-lane .lane-fill{position:absolute; left:0; top:0; bottom:0; border-radius:6px; transition:width .5s ease;}
-  .horse-lane .lane-horse{position:absolute; top:50%; transform:translate(-50%,-50%); font-size:18px; transition:left .5s ease;}
-  .horse-lane .lane-finish{position:absolute; right:2px; top:0; bottom:0; width:2px; background:var(--ink); opacity:.3;}
+  .horse-lane .lane-fill{position:absolute; left:0; top:0; bottom:0; border-radius:6px; transition:width 2.5s linear;}
+  .horse-lane .lane-divider{position:absolute; top:0; bottom:0; width:1px; background:rgba(27,31,59,0.15); z-index:1;}
+  .horse-lane .lane-horse{position:absolute; top:50%; transform:translate(-50%,-50%) scaleX(-1); font-size:18px; transition:left 2.5s linear; z-index:2;}
+  .horse-lane .lane-finish{position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--ink); opacity:.4; z-index:1;}
   .horse-lane .odds-tag{width:56px; flex-shrink:0; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted);}
   .horse-cards{display:flex; gap:6px; flex-wrap:wrap; min-height:34px; margin:14px 0;}
   .card-chip{
@@ -881,11 +882,12 @@ const SUITS = [
 ];
 const FINISH_STEPS = 5;
 const SHUFFLE_MS = 2500;
-const CARD_MS = 1300;
+const CARD_MS = 2500;
+const RACE_INTERVAL_MS = 10 * 60000;
 
 let horseBalance = 0;
 let currentRace = null;
-let myBet = null;
+let myBets = [];
 let horseStats = {};
 let raceHistory = [];
 let horseBalancesTop = [];
@@ -940,14 +942,14 @@ async function loadCurrentRace(){
   currentRace = data;
 }
 async function createNextRace(){
-  try{ await sb.from('horse_races').insert({status:'betting', scheduled_start:new Date(Date.now()+30*60000).toISOString()}); }
+  try{ await sb.from('horse_races').insert({status:'betting', scheduled_start:new Date(Date.now()+RACE_INTERVAL_MS).toISOString()}); }
   catch(e){ /* другой клиент уже создал — не страшно */ }
 }
-async function loadMyBet(){
-  myBet = null;
+async function loadMyBets(){
+  myBets = [];
   if(!currentRace) return;
-  const {data} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id).eq('user_id', currentUser.id).maybeSingle();
-  myBet = data || null;
+  const {data} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id).eq('user_id', currentUser.id);
+  myBets = data || [];
 }
 async function loadRaceHistory(){
   const {data} = await sb.from('horse_races').select('*').eq('status','finished').order('finished_at',{ascending:false}).limit(10);
@@ -975,7 +977,8 @@ async function placeBet(){
     const {error: balErr} = await sb.from('horse_balances').update({balance:newBalance}).eq('user_id', currentUser.id);
     if(balErr) throw balErr;
     horseBalance = newBalance;
-    myBet = {suit:selectedBetSuit, amount, odds};
+    myBets.push({suit:selectedBetSuit, amount, odds});
+    document.getElementById('betAmount').value = 100;
     renderHorseGame();
   }catch(e){ alert('Не удалось поставить: '+e.message); }
 }
@@ -1005,7 +1008,7 @@ async function finalizeRace(){
     .update({status:'finished', finished_at:new Date().toISOString()})
     .eq('id', currentRace.id).eq('status','running')
     .select().maybeSingle();
-  if(!data){ await loadCurrentRace(); await loadMyBet(); renderHorseGame(); return; }
+  if(!data){ await loadCurrentRace(); await loadMyBets(); renderHorseGame(); return; }
   currentRace = data;
 
   const {data: bets} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id);
@@ -1030,7 +1033,7 @@ async function finalizeRace(){
   await loadCurrentRace();
   await loadRaceHistory();
   await loadHorseBalancesTop();
-  myBet = null;
+  myBets = [];
   selectedBetSuit = null;
   renderHorseGame();
 }
@@ -1044,7 +1047,7 @@ async function horseSyncTick(){
       await finalizeRace();
     } else {
       const {data} = await sb.from('horse_races').select('*').eq('id', currentRace.id).maybeSingle();
-      if(data && data.status !== currentRace.status){ currentRace = data; await loadMyBet(); if(data.status==='finished'){ await loadRaceHistory(); await loadHorseBalancesTop(); } }
+      if(data && data.status !== currentRace.status){ currentRace = data; await loadMyBets(); if(data.status==='finished'){ await loadRaceHistory(); await loadHorseBalancesTop(); } }
     }
   }catch(e){ console.error('horse sync error', e); }
   renderHorseGame();
@@ -1102,9 +1105,10 @@ function renderHorseGame(){
     return `<div class="horse-lane">
       <div class="suit-tag" style="color:${s.color}">${s.symbol} ${s.name}</div>
       <div class="lane-track">
-        <div class="lane-fill" style="width:${pct}%; background:${s.color}22;"></div>
+        ${[20,40,60,80].map(p=>`<div class="lane-divider" style="left:${p}%"></div>`).join('')}
+        <div class="lane-fill" style="width:${pct}%; background:${s.color}33;"></div>
         <div class="lane-finish"></div>
-        <div class="lane-horse" style="left:calc(${pct}% )">🐎</div>
+        <div class="lane-horse" style="left:${pct}%">🐎</div>
       </div>
       <div class="odds-tag">${oddsOrSteps}</div>
     </div>`;
@@ -1115,29 +1119,28 @@ function renderHorseGame(){
     return `<div class="card-chip" style="color:${s.color}"><span>${c.rank}</span><span>${s.symbol}</span></div>`;
   }).join('');
 
+  const myBetsHtml = myBets.length>0 ? `<div class="my-bet-box" style="margin-top:10px;">
+    <div style="font-weight:600; margin-bottom:6px;">Твои ставки в этой гонке:</div>
+    ${myBets.map(b=>{ const s=suitInfo(b.suit); return `<div>${fmtMoney(b.amount)} на ${s.symbol} ${s.name} (коэф. ×${b.odds})</div>`; }).join('')}
+  </div>` : '';
+
   if(currentRace.status === 'betting'){
-    if(myBet){
-      const s = suitInfo(myBet.suit);
-      controlsEl.innerHTML = `<div class="my-bet-box">Твоя ставка: <b>${fmtMoney(myBet.amount)}</b> на ${s.symbol} ${s.name} (коэф. ×${myBet.odds}) — жди старта гонки.</div>`;
-    } else {
-      controlsEl.innerHTML = `
-        <div class="bet-suits" id="betSuitsWrap">
-          ${SUITS.map(s=>`<div class="bet-suit-btn ${selectedBetSuit===s.key?'selected':''}" onclick="selectBetSuit('${s.key}')">
-            <div class="sym" style="color:${s.color}">${s.symbol}</div>
-            <div>${s.name}</div>
-            <div class="odds">×${currentOdds(s.key).toFixed(2)}</div>
-          </div>`).join('')}
-        </div>
-        <div class="form-row">
-          <input type="number" id="betAmount" min="100" max="10000" step="100" value="100" style="width:120px;">
-          <button onclick="placeBet()">Поставить</button>
-          <button class="ghost" onclick="startRaceNow()">🏁 Начать сейчас</button>
-        </div>`;
-    }
+    controlsEl.innerHTML = `
+      <div class="bet-suits" id="betSuitsWrap">
+        ${SUITS.map(s=>`<div class="bet-suit-btn ${selectedBetSuit===s.key?'selected':''}" onclick="selectBetSuit('${s.key}')">
+          <div class="sym" style="color:${s.color}">${s.symbol}</div>
+          <div>${s.name}</div>
+          <div class="odds">×${currentOdds(s.key).toFixed(2)}</div>
+        </div>`).join('')}
+      </div>
+      <div class="form-row">
+        <input type="number" id="betAmount" min="100" max="10000" step="100" value="100" style="width:120px;">
+        <button onclick="placeBet()">Поставить</button>
+        <button class="ghost" onclick="startRaceNow()">🏁 Начать сейчас</button>
+      </div>
+      ${myBetsHtml}`;
   } else {
-    controlsEl.innerHTML = myBet
-      ? `<div class="my-bet-box">Твоя ставка: ${fmtMoney(myBet.amount)} на ${suitInfo(myBet.suit).symbol} ${suitInfo(myBet.suit).name} (коэф. ×${myBet.odds})</div>`
-      : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`;
+    controlsEl.innerHTML = myBets.length>0 ? myBetsHtml : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`;
   }
 
   document.getElementById('raceHistoryList').innerHTML = raceHistory.length===0
@@ -1162,7 +1165,7 @@ async function initHorseGame(){
   await ensureHorseBalance();
   await loadHorseStats();
   await loadCurrentRace();
-  await loadMyBet();
+  await loadMyBets();
   await loadRaceHistory();
   await loadHorseBalancesTop();
   renderHorseGame();
