@@ -881,6 +881,7 @@ const SUITS = [
   {key:'clubs', symbol:'♣', name:'Трефы', color:'#5C8374'},
 ];
 const FINISH_STEPS = 5;
+const COUNTDOWN_MS = 3000;
 const SHUFFLE_MS = 2500;
 const CARD_MS = 2500;
 const RACE_INTERVAL_MS = 10 * 60000;
@@ -888,6 +889,7 @@ const RACE_INTERVAL_MS = 10 * 60000;
 let horseBalance = 0;
 let currentRace = null;
 let myBets = [];
+let allRaceBets = [];
 let horseStats = {};
 let raceHistory = [];
 let horseBalancesTop = [];
@@ -924,7 +926,7 @@ async function ensureHorseBalance(){
   if(data){ horseBalance = Number(data.balance); return; }
   const {data: scoreRow} = await sb.from('game_scores').select('wins').eq('user_id', currentUser.id).maybeSingle();
   const wins = scoreRow?.wins || 0;
-  const startBalance = wins * 100;
+  const startBalance = 500 + wins * 100;
   await sb.from('horse_balances').upsert({user_id:currentUser.id, balance:startBalance});
   horseBalance = startBalance;
 }
@@ -950,6 +952,32 @@ async function loadMyBets(){
   if(!currentRace) return;
   const {data} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id).eq('user_id', currentUser.id);
   myBets = data || [];
+}
+async function loadAllRaceBets(){
+  allRaceBets = [];
+  if(!currentRace) return;
+  const {data} = await sb.from('horse_bets').select('user_id,suit,amount,odds').eq('race_id', currentRace.id);
+  allRaceBets = data || [];
+}
+async function markReady(){
+  if(!currentRace || currentRace.status!=='betting') return;
+  if(myBets.length===0){ alert('Сначала сделай ставку'); return; }
+  const readySet = new Set(currentRace.ready_users||[]);
+  if(readySet.has(currentUser.id)) return;
+  readySet.add(currentUser.id);
+  const {data} = await sb.from('horse_races').update({ready_users:Array.from(readySet)}).eq('id', currentRace.id).eq('status','betting').select().maybeSingle();
+  if(data) currentRace = data;
+  await checkAllReady();
+  renderHorseGame();
+}
+async function checkAllReady(){
+  if(!currentRace || currentRace.status!=='betting') return;
+  await loadAllRaceBets();
+  const distinctBettors = new Set(allRaceBets.map(b=>b.user_id));
+  const readySet = new Set(currentRace.ready_users||[]);
+  if(distinctBettors.size>0 && [...distinctBettors].every(id=>readySet.has(id))){
+    await tryStartRace();
+  }
 }
 async function loadRaceHistory(){
   const {data} = await sb.from('horse_races').select('*').eq('status','finished').order('finished_at',{ascending:false}).limit(10);
@@ -979,6 +1007,7 @@ async function placeBet(){
     horseBalance = newBalance;
     myBets.push({suit:selectedBetSuit, amount, odds});
     document.getElementById('betAmount').value = 100;
+    await loadAllRaceBets();
     renderHorseGame();
   }catch(e){ alert('Не удалось поставить: '+e.message); }
 }
@@ -1000,7 +1029,7 @@ async function tryStartRace(){
 
 async function finalizeRace(){
   if(!currentRace || currentRace.status!=='running') return;
-  const totalDuration = SHUFFLE_MS + currentRace.draw_sequence.length*CARD_MS + 600;
+  const totalDuration = COUNTDOWN_MS + SHUFFLE_MS + currentRace.draw_sequence.length*CARD_MS + 600;
   const elapsed = Date.now() - new Date(currentRace.started_at).getTime();
   if(elapsed < totalDuration) return;
 
@@ -1024,16 +1053,18 @@ async function finalizeRace(){
     }
   }
   for(const s of SUITS){
-    const cur = horseStats[s.key] || {wins:0, races:0};
+    const {data: freshStat} = await sb.from('horse_stats').select('wins,races').eq('suit', s.key).maybeSingle();
+    const cur = freshStat || {wins:0, races:0};
     const isWinner = s.key === currentRace.winner_suit;
     await sb.from('horse_stats').update({races:cur.races+1, wins:cur.wins+(isWinner?1:0)}).eq('suit', s.key);
   }
   await loadHorseStats();
   await createNextRace();
   await loadCurrentRace();
+  await loadMyBets();
+  await loadAllRaceBets();
   await loadRaceHistory();
   await loadHorseBalancesTop();
-  myBets = [];
   selectedBetSuit = null;
   renderHorseGame();
 }
@@ -1041,14 +1072,22 @@ async function finalizeRace(){
 async function horseSyncTick(){
   try{
     if(!currentRace) return;
-    if(currentRace.status === 'betting' && new Date(currentRace.scheduled_start).getTime() <= Date.now()){
-      await tryStartRace();
+    if(currentRace.status === 'betting'){
+      if(new Date(currentRace.scheduled_start).getTime() <= Date.now()){
+        await tryStartRace();
+      } else {
+        const {data} = await sb.from('horse_races').select('*').eq('id', currentRace.id).maybeSingle();
+        if(data) currentRace = data;
+        await loadAllRaceBets();
+        if(currentRace.status !== 'betting'){ await loadMyBets(); }
+      }
     } else if(currentRace.status === 'running'){
       await finalizeRace();
     } else {
       const {data} = await sb.from('horse_races').select('*').eq('id', currentRace.id).maybeSingle();
       if(data && data.status !== currentRace.status){ currentRace = data; await loadMyBets(); if(data.status==='finished'){ await loadRaceHistory(); await loadHorseBalancesTop(); } }
     }
+    await loadHorseBalancesTop();
   }catch(e){ console.error('horse sync error', e); }
   renderHorseGame();
 }
@@ -1077,16 +1116,20 @@ function renderHorseGame(){
     statusEl.textContent = `Ставки открыты · старт через ${fmtCountdown(new Date(currentRace.scheduled_start)-Date.now())}`;
   } else if(currentRace.status === 'running'){
     const elapsed = Date.now() - new Date(currentRace.started_at).getTime();
-    const cardElapsed = elapsed - SHUFFLE_MS;
-    if(cardElapsed < 0){
-      statusEl.className = 'horse-status-label running';
-      statusEl.textContent = '🔀 Тасуем колоду...';
+    statusEl.className = 'horse-status-label running';
+    if(elapsed < COUNTDOWN_MS){
+      const remain = Math.ceil((COUNTDOWN_MS - elapsed)/1000);
+      statusEl.textContent = remain>1 ? `Старт через ${remain}...` : '🏁 Старт!';
     } else {
-      const idx = Math.min(currentRace.draw_sequence.length, Math.floor(cardElapsed/CARD_MS)+1);
-      revealedCards = currentRace.draw_sequence.slice(0, idx);
-      revealedCards.forEach(c=>{ positions[c.suit] = Math.min(FINISH_STEPS, positions[c.suit]+1); });
-      statusEl.className = 'horse-status-label running';
-      statusEl.textContent = '🐎 Гонка идёт!';
+      const cardElapsed = elapsed - COUNTDOWN_MS - SHUFFLE_MS;
+      if(cardElapsed < 0){
+        statusEl.textContent = '🔀 Тасуем колоду...';
+      } else {
+        const idx = Math.min(currentRace.draw_sequence.length, Math.floor(cardElapsed/CARD_MS)+1);
+        revealedCards = currentRace.draw_sequence.slice(0, idx);
+        revealedCards.forEach(c=>{ positions[c.suit] = Math.min(FINISH_STEPS, positions[c.suit]+1); });
+        statusEl.textContent = '🐎 Гонка идёт!';
+      }
     }
   } else {
     revealedCards = currentRace.draw_sequence || [];
@@ -1124,6 +1167,22 @@ function renderHorseGame(){
     ${myBets.map(b=>{ const s=suitInfo(b.suit); return `<div>${fmtMoney(b.amount)} на ${s.symbol} ${s.name} (коэф. ×${b.odds})</div>`; }).join('')}
   </div>` : '';
 
+  const distinctBettorIds = [...new Set(allRaceBets.map(b=>b.user_id))];
+  const readySet = new Set(currentRace.ready_users || []);
+  const iAmBettor = distinctBettorIds.includes(currentUser.id);
+  const iAmReady = readySet.has(currentUser.id);
+  const readyBtnHtml = distinctBettorIds.length>0
+    ? `<button class="${(iAmReady||!iAmBettor)?'ghost':''}" ${(!iAmBettor||iAmReady)?'disabled':''} onclick="markReady()">
+        ${iAmReady?'✅ Ты готов':'✅ Готов'} (${readySet.size}/${distinctBettorIds.length})
+      </button>`
+    : `<span class="tag-chip">Пока никто не поставил — жди таймер или ставь первым</span>`;
+
+  const allBetsHtml = allRaceBets.length>0 ? `<div class="my-bet-box" style="margin-top:10px;">
+    <div style="font-weight:600; margin-bottom:6px;">Ставки игроков в этой гонке:</div>
+    ${allRaceBets.map(b=>{ const s=suitInfo(b.suit); const me = b.user_id===currentUser.id;
+      return `<div>${escapeHtml(usernameById(b.user_id))}${me?' (ты)':''}: ${fmtMoney(b.amount)} на ${s.symbol} ${s.name} (×${b.odds})</div>`; }).join('')}
+  </div>` : '';
+
   if(currentRace.status === 'betting'){
     controlsEl.innerHTML = `
       <div class="bet-suits" id="betSuitsWrap">
@@ -1136,11 +1195,12 @@ function renderHorseGame(){
       <div class="form-row">
         <input type="number" id="betAmount" min="100" max="10000" step="100" value="100" style="width:120px;">
         <button onclick="placeBet()">Поставить</button>
-        <button class="ghost" onclick="startRaceNow()">🏁 Начать сейчас</button>
+        ${readyBtnHtml}
       </div>
-      ${myBetsHtml}`;
+      ${myBetsHtml}
+      ${allBetsHtml}`;
   } else {
-    controlsEl.innerHTML = myBets.length>0 ? myBetsHtml : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`;
+    controlsEl.innerHTML = (myBets.length>0 ? myBetsHtml : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`) + allBetsHtml;
   }
 
   document.getElementById('raceHistoryList').innerHTML = raceHistory.length===0
@@ -1150,6 +1210,7 @@ function renderHorseGame(){
       const time = r.finished_at ? new Date(r.finished_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
       return `<div class="race-row"><span class="time">${time}</span><span style="color:${s.color}; font-weight:600;">${s.symbol} ${s.name}</span></div>`;
     }).join('');
+
 
   document.getElementById('horseBalancesList').innerHTML = horseBalancesTop.length===0
     ? `<div class="empty">Пока никто не играл.</div>`
@@ -1166,13 +1227,14 @@ async function initHorseGame(){
   await loadHorseStats();
   await loadCurrentRace();
   await loadMyBets();
+  await loadAllRaceBets();
   await loadRaceHistory();
   await loadHorseBalancesTop();
   renderHorseGame();
   if(horseSyncTimer) clearInterval(horseSyncTimer);
   if(horseAnimTimer) clearInterval(horseAnimTimer);
-  horseSyncTimer = setInterval(horseSyncTick, 6000);
-  horseAnimTimer = setInterval(()=>{ if(currentRace && currentRace.status==='running') renderHorseGame(); }, 500);
+  horseSyncTimer = setInterval(horseSyncTick, 2000);
+  horseAnimTimer = setInterval(renderHorseGame, 300);
 }
 
 function initApp(){
