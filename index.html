@@ -329,7 +329,10 @@
     <div class="panel" id="panel-horses">
       <div class="card" style="margin-bottom:16px;">
         <div class="horse-top">
-          <div>Твой баланс: <span class="mono horse-balance" id="horseBalanceLabel">$0</span></div>
+          <div>
+  Твой баланс: <span class="mono horse-balance" id="horseBalanceLabel">$0</span>
+  <div id="horseBalanceSource" style="font-size:11px;color:var(--muted);margin-top:3px;"></div>
+</div>
           <div class="horse-status-label" id="horseStatusLabel"></div>
         </div>
       </div>
@@ -847,13 +850,31 @@ function renderGame(){
 }
 async function recordWin(){
   try{
-    const {data: existing} = await sb.from('game_scores').select('wins').eq('user_id', currentUser.id).maybeSingle();
+    // 1 победа в «Виселице» = +1 очко = +$100 в общем балансе «Скачек».
+    const {data: existing} = await sb.from('game_scores')
+      .select('wins')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
     const newWins = (existing?.wins || 0) + 1;
-    const {error} = await sb.from('game_scores').upsert({user_id: currentUser.id, wins:newWins, updated_at:new Date().toISOString()});
-    if(error) throw error;
+
+    const {error: scoreErr} = await sb.from('game_scores').upsert({
+      user_id: currentUser.id,
+      wins: newWins,
+      updated_at: new Date().toISOString()
+    });
+    if(scoreErr) throw scoreErr;
+
+    // Баланс «Скачек» обновляется автоматически триггером Supabase:
+    // +$100 за новое очко «Виселицы». Поэтому здесь не делаем второе начисление.
+    await ensureHorseBalance();
     await loadLeaderboard();
     renderLeaderboard();
-  }catch(e){ console.error('Не удалось сохранить результат:', e.message); }
+    await loadHorseBalancesTop();
+    renderHorseGame();
+  }catch(e){
+    console.error('Не удалось сохранить результат:', e.message);
+  }
 }
 async function loadLeaderboard(){
   const {data, error} = await sb.from('game_scores').select('user_id, wins').order('wins', {ascending:false}).limit(15);
@@ -922,12 +943,33 @@ function currentOdds(suitKey){
 }
 
 async function ensureHorseBalance(){
-  const {data} = await sb.from('horse_balances').select('balance').eq('user_id', currentUser.id).maybeSingle();
-  if(data){ horseBalance = Number(data.balance); return; }
-  const {data: scoreRow} = await sb.from('game_scores').select('wins').eq('user_id', currentUser.id).maybeSingle();
-  const wins = scoreRow?.wins || 0;
+  // Начальный баланс создаётся как $500 + $100 за каждое угаданное слово.
+  // После создания баланс меняется только ставками/выигрышами в «Скачках»
+  // и новыми победами в «Виселице».
+  const {data} = await sb.from('horse_balances')
+    .select('balance')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  if(data){
+    horseBalance = Number(data.balance);
+    return;
+  }
+
+  const {data: scoreRow} = await sb.from('game_scores')
+    .select('wins')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  const wins = Number(scoreRow?.wins || 0);
   const startBalance = 500 + wins * 100;
-  await sb.from('horse_balances').upsert({user_id:currentUser.id, balance:startBalance});
+
+  const {error} = await sb.from('horse_balances').upsert({
+    user_id: currentUser.id,
+    balance: startBalance
+  });
+  if(error) throw error;
+
   horseBalance = startBalance;
 }
 async function loadHorseStats(){
@@ -1101,6 +1143,10 @@ function fmtCountdown(ms){
 
 function renderHorseGame(){
   document.getElementById('horseBalanceLabel').textContent = fmtMoney(horseBalance);
+  const sourceEl = document.getElementById('horseBalanceSource');
+  if(sourceEl){
+    sourceEl.textContent = 'Старт: $500 + $100 за каждое угаданное слово в «Виселице»';
+  }
   const statusEl = document.getElementById('horseStatusLabel');
   const trackEl = document.getElementById('horseTrack');
   const cardsEl = document.getElementById('horseCards');
