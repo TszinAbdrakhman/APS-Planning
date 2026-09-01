@@ -253,13 +253,33 @@
   .race-row .time{color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11.5px; width:100px; flex-shrink:0;}
 
   /* ---- BLACKJACK ---- */
-  .bj-hand{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
-  .bj-seats{display:grid; grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); gap:12px;}
-  .bj-seat{border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center; min-height:170px; display:flex; flex-direction:column; align-items:center; gap:8px; background:#fff;}
-  .bj-seat.mine{border-color:var(--ink); border-width:2px;}
-  .bj-seat.turn{border-color:var(--amber); box-shadow:0 0 0 2px var(--amber) inset;}
-  .bj-seat .seat-label{font-size:11.5px; color:var(--muted);}
-  .bj-seat-start{justify-content:center; align-items:center;}
+  .bj-rules{font-size:12px; color:var(--muted); margin-top:12px; border-top:1px dashed var(--line); padding-top:10px; line-height:1.5;}
+  .bj-table{
+    background:radial-gradient(ellipse at center, #2E6B4F 0%, #1F4E39 75%, #17402E 100%);
+    border-radius:24px; padding:24px 18px; box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  .bj-dealer-zone{text-align:center; margin-bottom:22px;}
+  .bj-dealer-zone h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:rgba(255,255,255,.65); margin-bottom:10px;}
+  .bj-hand{display:flex; gap:6px; flex-wrap:wrap; align-items:center; justify-content:center; min-height:52px;}
+  .bj-seats{display:grid; grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); gap:14px;}
+  .bj-seat{
+    border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:12px; text-align:center;
+    min-height:170px; display:flex; flex-direction:column; align-items:center; gap:8px;
+    background:rgba(255,255,255,.06); backdrop-filter:blur(2px);
+  }
+  .bj-seat.mine{border-color:var(--amber); border-width:2px; background:rgba(255,255,255,.1);}
+  .bj-seat.turn{box-shadow:0 0 0 3px var(--amber); }
+  .bj-seat .seat-label{font-size:11px; color:rgba(255,255,255,.6);}
+  .bj-seat .empty{color:rgba(255,255,255,.4);}
+  .bj-seat-start{justify-content:center; align-items:center; background:transparent; border-style:dashed;}
+  .bj-outcome{font-weight:700; font-size:13.5px; margin-top:2px;}
+  .bj-outcome.win{color:#7FDDA8;}
+  .bj-outcome.push{color:rgba(255,255,255,.7);}
+  .bj-outcome.lose{color:#F0898F;}
+  .bj-points{font-size:11.5px; color:rgba(255,255,255,.7); font-family:'IBM Plex Mono', monospace;}
+  @keyframes bjDeal{ from{opacity:0; transform:translateY(-16px) scale(.75) rotate(-6deg);} to{opacity:1; transform:translateY(0) scale(1) rotate(0);} }
+  .card-chip.deal-in{animation:bjDeal .35s ease-out;}
+  .bj-seat .form-row{justify-content:center;}
 </style>
 
 <style id="mobile-first-overrides">
@@ -412,12 +432,13 @@
           <div>Твой баланс: <span class="mono horse-balance" id="bjBalanceLabel">$0</span></div>
           <div class="horse-status-label" id="bjStatusLabel"></div>
         </div>
+        <div class="bj-rules">Ставка от $100 до $10 000. Победа — забираешь ×2 от ставки. Блэкджек (21 с первых двух карт) — ×2.5. Ничья с дилером — ставка просто возвращается. Проигрыш или перебор (>21) — ставка сгорает.</div>
       </div>
-      <div class="card" style="margin-bottom:16px;">
-        <h3 style="font-size:13px; margin-bottom:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;">Дилер</h3>
-        <div class="bj-hand" id="bjDealerHand"></div>
-      </div>
-      <div class="card">
+      <div class="bj-table">
+        <div class="bj-dealer-zone">
+          <h3>Дилер</h3>
+          <div class="bj-hand" id="bjDealerHand"></div>
+        </div>
         <div class="bj-seats" id="bjSeatsGrid"></div>
       </div>
     </div>
@@ -1199,6 +1220,7 @@ async function horseSyncTick(){
       if(data && data.status !== currentRace.status){ currentRace = data; await loadMyBets(); if(data.status==='finished'){ await loadRaceHistory(); await loadHorseBalancesTop(); } }
     }
     await loadHorseBalancesTop();
+    await refreshMyBalance();
   }catch(e){ console.error('horse sync error', e); }
   renderHorseGame();
 }
@@ -1431,6 +1453,12 @@ async function placeBjBet(){
     renderBlackjack();
   }catch(e){ alert('Не удалось поставить: '+e.message); }
 }
+async function refreshMyBalance(){
+  try{
+    const {data} = await sb.from('horse_balances').select('balance').eq('user_id', currentUser.id).maybeSingle();
+    if(data) horseBalance = Number(data.balance);
+  }catch(e){ /* тихо игнорируем, следующий тик обновит */ }
+}
 async function creditBalance(userId, amount){
   const {data: balRow} = await sb.from('horse_balances').select('balance').eq('user_id', userId).maybeSingle();
   const newBal = (balRow?.balance || 0) + amount;
@@ -1540,8 +1568,17 @@ async function bjSyncTick(){
     if(data) bjRound = data;
     await loadBjSeats();
     if(bjRound.status==='finished'){ await loadBjRound(); await loadBjSeats(); }
+    await refreshMyBalance();
   }catch(e){ console.error('bj sync error', e); }
   renderBlackjack();
+}
+
+let bjPrevCounts = {};
+let bjLastRoundId = null;
+
+function bjCardHtml(card, isNew){
+  const s = suitInfo(card.suit);
+  return `<div class="card-chip ${isNew?'deal-in':''}" style="color:${s.color}"><span>${card.rank}</span><span>${s.symbol}</span></div>`;
 }
 
 function renderBlackjack(){
@@ -1552,17 +1589,23 @@ function renderBlackjack(){
   const dealerEl = document.getElementById('bjDealerHand');
   const seatsEl = document.getElementById('bjSeatsGrid');
   if(!bjRound){ statusEl.textContent = 'Загрузка...'; return; }
+  if(bjRound.id !== bjLastRoundId){ bjPrevCounts = {}; bjLastRoundId = bjRound.id; }
 
   statusEl.textContent = bjRound.status==='open' ? 'Стол открыт — садись и делай ставку'
     : bjRound.status==='playing' ? '🃏 Раунд идёт'
     : '✅ Раунд завершён — скоро новый стол';
 
   const dealerCards = bjRound.dealer_cards || [];
-  dealerEl.innerHTML = dealerCards.map((c,i)=>{
-    if(i===1 && bjRound.status==='playing') return `<div class="card-chip">🂠</div>`;
-    const s = suitInfo(c.suit);
-    return `<div class="card-chip" style="color:${s.color}"><span>${c.rank}</span><span>${s.symbol}</span></div>`;
-  }).join('') + (bjRound.status==='finished' && dealerCards.length ? `<span class="tag-chip" style="margin-left:8px;">Очки: ${handValue(dealerCards)}</span>` : '');
+  const visibleDealerCount = bjRound.status==='playing' ? Math.min(dealerCards.length, 1) : dealerCards.length;
+  const dealerPrev = bjPrevCounts['dealer'] || 0;
+  let dealerHtml = '';
+  for(let i=0; i<dealerCards.length; i++){
+    if(i===1 && bjRound.status==='playing'){ dealerHtml += `<div class="card-chip">🂠</div>`; continue; }
+    dealerHtml += bjCardHtml(dealerCards[i], i>=dealerPrev);
+  }
+  bjPrevCounts['dealer'] = bjRound.status==='open' ? 0 : dealerCards.length;
+  if(bjRound.status==='finished' && dealerCards.length){ dealerHtml += `<span class="bj-points" style="margin-left:8px;">${handValue(dealerCards)} очков</span>`; }
+  dealerEl.innerHTML = dealerHtml;
 
   let seatsHtml = '';
   for(let n=1; n<=5; n++){
@@ -1575,30 +1618,35 @@ function renderBlackjack(){
     }
     const isMine = seat.user_id === currentUser.id;
     const isTurn = bjRound.status==='playing' && bjRound.current_turn_seat===n;
-    const cardsHtml = (seat.cards||[]).map(c=>{ const si=suitInfo(c.suit); return `<div class="card-chip" style="color:${si.color}"><span>${c.rank}</span><span>${si.symbol}</span></div>`; }).join('');
+    const seatKey = 'seat_'+seat.id;
+    const seatPrev = bjPrevCounts[seatKey] || 0;
+    const cards = seat.cards || [];
+    const cardsHtml = cards.map((c,i)=>bjCardHtml(c, i>=seatPrev)).join('');
+    bjPrevCounts[seatKey] = bjRound.status==='open' ? 0 : cards.length;
+
     let footer = '';
     if(bjRound.status==='open'){
       if(!seat.bet){
         footer = isMine
-          ? `<div class="form-row" style="justify-content:center;"><input type="number" id="bjBetAmount" min="100" max="10000" step="100" value="100" style="width:90px;"><button onclick="placeBjBet()">Ставка</button></div><button class="ghost" onclick="leaveSeat()">Встать</button>`
-          : `<span class="tag-chip">Ставка не сделана</span>`;
+          ? `<div class="form-row"><input type="number" id="bjBetAmount" min="100" max="10000" step="100" value="100" style="width:90px;"><button onclick="placeBjBet()">Ставка</button></div><button class="ghost" onclick="leaveSeat()">Встать</button>`
+          : `<span class="seat-label">Ставка не сделана</span>`;
       } else {
-        footer = `<span class="tag-chip">Ставка: ${fmtMoney(seat.bet)}</span>` + (isMine ? `<button class="ghost" onclick="leaveSeat()">Встать</button>` : '');
+        footer = `<span class="seat-label">Ставка: ${fmtMoney(seat.bet)}</span>` + (isMine ? `<button class="ghost" onclick="leaveSeat()">Встать</button>` : '');
       }
     } else if(bjRound.status==='playing'){
-      footer = `<span class="tag-chip">${handValue(seat.cards)} очков</span>`;
+      footer = `<span class="bj-points">${handValue(cards)} очков</span>`;
       if(isTurn && isMine && seat.status==='active'){
-        footer += `<div class="form-row" style="justify-content:center; margin-top:6px;"><button onclick="bjHit()">Ещё</button><button class="ghost" onclick="bjStand()">Хватит</button></div>`;
-      } else if(seat.status==='bust'){ footer += `<div style="color:var(--rust); font-weight:600;">Перебор</div>`; }
-      else if(seat.status==='blackjack'){ footer += `<div style="color:var(--sage); font-weight:600;">Блэкджек!</div>`; }
-      else if(seat.status==='stood'){ footer += `<div style="color:var(--muted);">Хватит</div>`; }
-      else if(seat.status==='active'){ footer += `<div style="color:var(--muted); font-size:11.5px;">Ждёт хода...</div>`; }
+        footer += `<div class="form-row" style="margin-top:6px;"><button onclick="bjHit()">Ещё</button><button class="ghost" onclick="bjStand()">Хватит</button></div>`;
+      } else if(seat.status==='bust'){ footer += `<div class="bj-outcome lose">Перебор</div>`; }
+      else if(seat.status==='blackjack'){ footer += `<div class="bj-outcome win">Блэкджек!</div>`; }
+      else if(seat.status==='stood'){ footer += `<div class="seat-label">Хватит, ждёт результата</div>`; }
+      else if(seat.status==='active'){ footer += `<div class="seat-label">Ждёт хода...</div>`; }
     } else {
-      footer = `<span class="tag-chip">${handValue(seat.cards)} очков</span>`;
-      if(seat.result==='win') footer += `<div style="color:var(--sage); font-weight:600;">Выигрыш ${fmtMoney(seat.payout)}</div>`;
-      else if(seat.result==='blackjack') footer += `<div style="color:var(--sage); font-weight:600;">Блэкджек! ${fmtMoney(seat.payout)}</div>`;
-      else if(seat.result==='push') footer += `<div style="color:var(--muted);">Ничья</div>`;
-      else footer += `<div style="color:var(--rust);">Проигрыш</div>`;
+      footer = `<span class="bj-points">${handValue(cards)} очков · ставка ${fmtMoney(seat.bet)}</span>`;
+      if(seat.result==='win') footer += `<div class="bj-outcome win">Победа! +${fmtMoney(seat.payout - seat.bet)} (получено ${fmtMoney(seat.payout)})</div>`;
+      else if(seat.result==='blackjack') footer += `<div class="bj-outcome win">Блэкджек! +${fmtMoney(seat.payout - seat.bet)} (получено ${fmtMoney(seat.payout)})</div>`;
+      else if(seat.result==='push') footer += `<div class="bj-outcome push">Ничья — ставка возвращена (${fmtMoney(seat.payout)})</div>`;
+      else footer += `<div class="bj-outcome lose">Проигрыш −${fmtMoney(seat.bet)}</div>`;
     }
     seatsHtml += `<div class="bj-seat ${isMine?'mine':''} ${isTurn?'turn':''}">
       <div class="seat-label">Место ${n} · ${escapeHtml(usernameById(seat.user_id))}${isMine?' (ты)':''}</div>
