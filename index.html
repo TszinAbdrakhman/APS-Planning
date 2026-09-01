@@ -252,6 +252,47 @@
   .race-row:last-child{border-bottom:none;}
   .race-row .time{color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11.5px; width:100px; flex-shrink:0;}
 </style>
+
+<style id="mobile-first-overrides">
+@media (max-width: 700px){
+  html,body{width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;}
+  body{font-size:15px;padding-bottom:74px;}
+  .container,.wrap,.page,.main,.content{width:100%!important;max-width:none!important;padding-left:14px!important;padding-right:14px!important;box-sizing:border-box;}
+  header,.topbar,.nav{position:sticky;top:0;z-index:50;}
+  input,select,button,textarea{font-size:16px!important;min-height:46px;}
+  button{touch-action:manipulation;}
+  .card,.panel,.box,.section{border-radius:14px!important;margin-bottom:12px;}
+  .grid,.cards,.dashboard-grid{grid-template-columns:1fr!important;gap:12px!important;}
+  .row{flex-wrap:wrap!important;gap:8px!important;}
+  table{display:block;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+  .horse-top{gap:10px!important;align-items:flex-start!important;}
+  .horse-balance{font-size:20px!important;}
+  .horse-lane{gap:7px!important;margin-bottom:10px!important;}
+  .horse-lane .suit-tag{width:34px!important;font-size:0!important;justify-content:center;}
+  .horse-lane .suit-tag .sym{font-size:22px!important;}
+  .horse-lane .lane-track{height:30px!important;}
+  .horse-lane .lane-horse{font-size:20px!important;}
+  .horse-lane .odds-tag{width:48px!important;font-size:11px!important;}
+  .horse-cards{gap:5px!important;overflow:hidden;max-height:54px;}
+  .card-chip{width:31px!important;height:42px!important;font-size:10px!important;flex:0 0 auto;}
+  .bet-suits{display:grid!important;grid-template-columns:1fr 1fr;gap:8px!important;}
+  .bet-suit-btn{min-width:0!important;min-height:58px!important;padding:8px!important;border-radius:12px!important;}
+  .bet-suit-btn .sym{font-size:22px!important;}
+  .bet-suit-btn .odds{font-size:11px!important;}
+  .my-bet-box{font-size:14px!important;}
+  #horseControls .primary,#horseControls button[type="submit"],#horseControls .btn-primary{width:100%!important;min-height:52px!important;font-size:17px!important;font-weight:700;}
+  #betAmount{width:100%!important;box-sizing:border-box;min-height:50px!important;text-align:center;font-size:20px!important;}
+  #horseStatusLabel{font-size:13px!important;line-height:1.35;}
+  #leaderboardList .lb-row{min-height:48px;}
+  .auth-screen,.auth-card{width:100%!important;max-width:100%!important;box-sizing:border-box;}
+  .auth-card{padding:20px!important;margin:14px!important;}
+  .tabs,.tabbar{overflow-x:auto!important;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar,.tabbar::-webkit-scrollbar{display:none;}
+  .bottom-nav{position:fixed;left:0;right:0;bottom:0;height:64px;background:rgba(255,255,255,.97);border-top:1px solid var(--line,#ddd);z-index:100;display:flex!important;padding-bottom:env(safe-area-inset-bottom);box-sizing:content-box;}
+  .bottom-nav a,.bottom-nav button{flex:1;border:0;background:none;min-height:64px;font-size:11px!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+}
+@media (min-width:701px){.bottom-nav{display:none!important;}}
+</style>
 </head>
 <body>
 
@@ -1908,5 +1949,12 @@ function renderWeekChart(){
 })();
 document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.key==='Enter') submitAuth(); });
 </script>
+
+<nav class="bottom-nav" aria-label="Мобильная навигация">
+  <button type="button" onclick="document.querySelector('.tab.active')?.click(); window.scrollTo({top:0,behavior:'smooth'})">🏠<span>Главная</span></button>
+  <button type="button" onclick="document.querySelector('[data-tab=\"hangman\"]')?.click()">🎯<span>Виселица</span></button>
+  <button type="button" onclick="document.querySelector('[data-tab=\"horses\"]')?.click()">🐎<span>Скачки</span></button>
+  <button type="button" onclick="document.querySelector('[data-tab=\"ranking\"]')?.click()">🏆<span>Рейтинг</span></button>
+</nav>
 </body>
 </html>
