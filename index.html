@@ -251,6 +251,15 @@
   .race-row{display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13px;}
   .race-row:last-child{border-bottom:none;}
   .race-row .time{color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11.5px; width:100px; flex-shrink:0;}
+
+  /* ---- BLACKJACK ---- */
+  .bj-hand{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+  .bj-seats{display:grid; grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); gap:12px;}
+  .bj-seat{border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center; min-height:170px; display:flex; flex-direction:column; align-items:center; gap:8px; background:#fff;}
+  .bj-seat.mine{border-color:var(--ink); border-width:2px;}
+  .bj-seat.turn{border-color:var(--amber); box-shadow:0 0 0 2px var(--amber) inset;}
+  .bj-seat .seat-label{font-size:11.5px; color:var(--muted);}
+  .bj-seat-start{justify-content:center; align-items:center;}
 </style>
 
 <style id="mobile-first-overrides">
@@ -330,6 +339,7 @@
     <button class="tab" data-tab="projects">Проекты и время</button>
     <button class="tab" data-tab="game">Игра 🎲</button>
     <button class="tab" data-tab="horses">Скачки 🐎</button>
+    <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -392,6 +402,23 @@
       <div class="card">
         <h3 style="font-size:15px; margin-bottom:14px;">💰 Баланс игроков</h3>
         <div id="horseBalancesList"></div>
+      </div>
+    </div>
+
+    <!-- BLACKJACK -->
+    <div class="panel" id="panel-blackjack">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="horse-top">
+          <div>Твой баланс: <span class="mono horse-balance" id="bjBalanceLabel">$0</span></div>
+          <div class="horse-status-label" id="bjStatusLabel"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:13px; margin-bottom:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;">Дилер</h3>
+        <div class="bj-hand" id="bjDealerHand"></div>
+      </div>
+      <div class="card">
+        <div class="bj-seats" id="bjSeatsGrid"></div>
       </div>
     </div>
 
@@ -960,9 +987,10 @@ let horseSyncTimer = null, horseAnimTimer = null;
 
 function suitInfo(key){ return SUITS.find(s=>s.key===key); }
 
+const HORSE_RANKS = ['6','7','8','9','10','J','Q','K','A'];
 function buildShuffledDeck(){
   const deck = [];
-  SUITS.forEach(s=>{ for(let r=1;r<=10;r++) deck.push({suit:s.key, rank:r}); });
+  SUITS.forEach(s=>{ HORSE_RANKS.forEach(r=> deck.push({suit:s.key, rank:r})); });
   return shuffleArray(deck);
 }
 function simulateRace(){
@@ -1324,6 +1352,275 @@ async function initHorseGame(){
   horseAnimTimer = setInterval(renderHorseGame, 300);
 }
 
+/* ============ BLACKJACK ============ */
+const BJ_RANKS = [
+  {r:'A', v:11}, {r:'2',v:2},{r:'3',v:3},{r:'4',v:4},{r:'5',v:5},{r:'6',v:6},{r:'7',v:7},{r:'8',v:8},{r:'9',v:9},
+  {r:'10',v:10},{r:'J',v:10},{r:'Q',v:10},{r:'K',v:10}
+];
+let bjRound = null;
+let bjSeats = [];
+let bjSyncTimer = null;
+
+function buildBjDeck(){
+  const deck = [];
+  SUITS.forEach(s=>{ BJ_RANKS.forEach(rk=> deck.push({suit:s.key, rank:rk.r, value:rk.v})); });
+  return shuffleArray(deck);
+}
+function handValue(cards){
+  let total = 0, aces = 0;
+  (cards||[]).forEach(c=>{ total += c.value; if(c.rank==='A') aces++; });
+  while(total > 21 && aces > 0){ total -= 10; aces--; }
+  return total;
+}
+function isBjBlackjack(cards){ return cards.length===2 && handValue(cards)===21; }
+function getMySeat(){ return bjSeats.find(s=>s.user_id===currentUser.id) || null; }
+
+async function loadBjRound(){
+  let {data} = await sb.from('blackjack_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(!data || data.status==='finished'){
+    await createNextBjRound();
+    ({data} = await sb.from('blackjack_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+  }
+  bjRound = data;
+}
+async function createNextBjRound(){
+  try{ await sb.from('blackjack_rounds').insert({status:'open'}); }
+  catch(e){ /* уже есть открытый стол — норм */ }
+}
+async function loadBjSeats(){
+  if(!bjRound){ bjSeats = []; return; }
+  const {data} = await sb.from('blackjack_seats').select('*').eq('round_id', bjRound.id).order('seat_no');
+  bjSeats = data || [];
+}
+
+async function sitAtSeat(seatNo){
+  if(!bjRound || bjRound.status!=='open'){ alert('Стол сейчас занят раундом — дождись конца'); return; }
+  if(getMySeat()){ alert('Ты уже сидишь за столом'); return; }
+  if(bjSeats.some(s=>s.seat_no===seatNo)){ alert('Место занято'); return; }
+  try{
+    const {error} = await sb.from('blackjack_seats').insert({round_id:bjRound.id, seat_no:seatNo, user_id:currentUser.id, status:'seated'});
+    if(error) throw error;
+    await loadBjSeats();
+    renderBlackjack();
+  }catch(e){ alert('Не удалось сесть: '+e.message); }
+}
+async function leaveSeat(){
+  const seat = getMySeat();
+  if(!seat || !bjRound || bjRound.status!=='open') return;
+  try{
+    if(seat.bet){ await creditBalance(currentUser.id, seat.bet); }
+    await sb.from('blackjack_seats').delete().eq('id', seat.id);
+    await loadBjSeats();
+    renderBlackjack();
+  }catch(e){ alert('Не удалось встать: '+e.message); }
+}
+async function placeBjBet(){
+  const seat = getMySeat();
+  if(!seat){ alert('Сначала сядь за стол'); return; }
+  if(seat.bet){ alert('Ставка уже сделана'); return; }
+  const amount = parseInt(document.getElementById('bjBetAmount').value, 10);
+  if(!amount || amount<100 || amount>10000){ alert('Ставка от $100 до $10000'); return; }
+  if(amount > horseBalance){ alert('Недостаточно средств'); return; }
+  try{
+    const {error} = await sb.from('blackjack_seats').update({bet:amount}).eq('id', seat.id);
+    if(error) throw error;
+    const newBal = horseBalance - amount;
+    await sb.from('horse_balances').update({balance:newBal}).eq('user_id', currentUser.id);
+    horseBalance = newBal;
+    await loadBjSeats();
+    renderBlackjack();
+  }catch(e){ alert('Не удалось поставить: '+e.message); }
+}
+async function creditBalance(userId, amount){
+  const {data: balRow} = await sb.from('horse_balances').select('balance').eq('user_id', userId).maybeSingle();
+  const newBal = (balRow?.balance || 0) + amount;
+  await sb.from('horse_balances').update({balance:newBal}).eq('user_id', userId);
+  if(userId === currentUser.id) horseBalance = newBal;
+}
+
+async function startBjRound(){
+  if(!bjRound || bjRound.status!=='open') return;
+  const bettors = bjSeats.filter(s=>s.bet).sort((a,b)=>a.seat_no-b.seat_no);
+  if(bettors.length===0){ alert('Хотя бы один игрок должен сначала поставить ставку'); return; }
+  const deck = buildBjDeck();
+  const dealerCards = [deck.pop(), deck.pop()];
+  const dealt = bettors.map(s=>{
+    const cards = [deck.pop(), deck.pop()];
+    return {id:s.id, seat_no:s.seat_no, cards, status: isBjBlackjack(cards) ? 'blackjack' : 'active'};
+  });
+  const firstActive = dealt.find(s=>s.status==='active');
+  try{
+    const {data} = await sb.from('blackjack_rounds')
+      .update({status:'playing', deck, dealer_cards:dealerCards, started_at:new Date().toISOString(), current_turn_seat: firstActive ? firstActive.seat_no : null})
+      .eq('id', bjRound.id).eq('status','open').select().maybeSingle();
+    if(!data){ await loadBjRound(); await loadBjSeats(); renderBlackjack(); return; }
+    bjRound = data;
+    for(const u of dealt){ await sb.from('blackjack_seats').update({cards:u.cards, status:u.status}).eq('id', u.id); }
+    for(const s of bjSeats.filter(s=>!s.bet)){ await sb.from('blackjack_seats').delete().eq('id', s.id); }
+    await loadBjSeats();
+    if(!firstActive){ await resolveDealerAndFinish(); }
+    renderBlackjack();
+  }catch(e){ alert('Не удалось начать раунд: '+e.message); }
+}
+
+async function bjHit(){
+  const seat = getMySeat();
+  if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || seat.status!=='active') return;
+  const deck = [...bjRound.deck];
+  const card = deck.pop();
+  const newCards = [...seat.cards, card];
+  const val = handValue(newCards);
+  const newStatus = val>21 ? 'bust' : (val===21 ? 'stood' : 'active');
+  try{
+    await sb.from('blackjack_seats').update({cards:newCards, status:newStatus}).eq('id', seat.id);
+    await sb.from('blackjack_rounds').update({deck}).eq('id', bjRound.id);
+    bjRound.deck = deck;
+    await loadBjSeats();
+    if(newStatus!=='active'){ await advanceBjTurn(); } else { renderBlackjack(); }
+  }catch(e){ alert('Ошибка: '+e.message); }
+}
+async function bjStand(){
+  const seat = getMySeat();
+  if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || seat.status!=='active') return;
+  try{
+    await sb.from('blackjack_seats').update({status:'stood'}).eq('id', seat.id);
+    await loadBjSeats();
+    await advanceBjTurn();
+  }catch(e){ alert('Ошибка: '+e.message); }
+}
+async function advanceBjTurn(){
+  const actable = bjSeats.filter(s=>s.status==='active' && s.seat_no > (bjRound.current_turn_seat||0)).sort((a,b)=>a.seat_no-b.seat_no);
+  if(actable.length>0){
+    await sb.from('blackjack_rounds').update({current_turn_seat: actable[0].seat_no}).eq('id', bjRound.id).eq('status','playing');
+    await loadBjRound();
+    renderBlackjack();
+  } else {
+    await resolveDealerAndFinish();
+  }
+}
+async function resolveDealerAndFinish(){
+  let deck = [...bjRound.deck];
+  let dealerCards = [...bjRound.dealer_cards];
+  const anyoneLeft = bjSeats.some(s=>s.status==='active' || s.status==='blackjack' || s.status==='stood');
+  if(anyoneLeft){
+    while(handValue(dealerCards) < 17){ dealerCards.push(deck.pop()); }
+  }
+  const dealerVal = handValue(dealerCards);
+  const dealerBust = dealerVal > 21;
+  for(const s of bjSeats){
+    if(s.status==='bust'){ await sb.from('blackjack_seats').update({result:'lose', payout:0}).eq('id', s.id); continue; }
+    if(s.status==='blackjack'){
+      const payout = +(s.bet*2.5).toFixed(2);
+      await creditBalance(s.user_id, payout);
+      await sb.from('blackjack_seats').update({result:'blackjack', payout}).eq('id', s.id);
+      continue;
+    }
+    const val = handValue(s.cards);
+    let result, payout;
+    if(dealerBust || val>dealerVal){ result='win'; payout=+(s.bet*2).toFixed(2); }
+    else if(val===dealerVal){ result='push'; payout=s.bet; }
+    else { result='lose'; payout=0; }
+    if(payout>0) await creditBalance(s.user_id, payout);
+    await sb.from('blackjack_seats').update({result, payout}).eq('id', s.id);
+  }
+  const {data} = await sb.from('blackjack_rounds')
+    .update({status:'finished', dealer_cards:dealerCards, deck, finished_at:new Date().toISOString()})
+    .eq('id', bjRound.id).eq('status','playing').select().maybeSingle();
+  if(data) bjRound = data;
+  await createNextBjRound();
+  await loadBjRound();
+  await loadBjSeats();
+  renderBlackjack();
+}
+
+async function bjSyncTick(){
+  try{
+    if(!bjRound) return;
+    const {data} = await sb.from('blackjack_rounds').select('*').eq('id', bjRound.id).maybeSingle();
+    if(data) bjRound = data;
+    await loadBjSeats();
+    if(bjRound.status==='finished'){ await loadBjRound(); await loadBjSeats(); }
+  }catch(e){ console.error('bj sync error', e); }
+  renderBlackjack();
+}
+
+function renderBlackjack(){
+  const balEl = document.getElementById('bjBalanceLabel');
+  if(!balEl) return;
+  balEl.textContent = fmtMoney(horseBalance);
+  const statusEl = document.getElementById('bjStatusLabel');
+  const dealerEl = document.getElementById('bjDealerHand');
+  const seatsEl = document.getElementById('bjSeatsGrid');
+  if(!bjRound){ statusEl.textContent = 'Загрузка...'; return; }
+
+  statusEl.textContent = bjRound.status==='open' ? 'Стол открыт — садись и делай ставку'
+    : bjRound.status==='playing' ? '🃏 Раунд идёт'
+    : '✅ Раунд завершён — скоро новый стол';
+
+  const dealerCards = bjRound.dealer_cards || [];
+  dealerEl.innerHTML = dealerCards.map((c,i)=>{
+    if(i===1 && bjRound.status==='playing') return `<div class="card-chip">🂠</div>`;
+    const s = suitInfo(c.suit);
+    return `<div class="card-chip" style="color:${s.color}"><span>${c.rank}</span><span>${s.symbol}</span></div>`;
+  }).join('') + (bjRound.status==='finished' && dealerCards.length ? `<span class="tag-chip" style="margin-left:8px;">Очки: ${handValue(dealerCards)}</span>` : '');
+
+  let seatsHtml = '';
+  for(let n=1; n<=5; n++){
+    const seat = bjSeats.find(s=>s.seat_no===n);
+    if(!seat){
+      seatsHtml += `<div class="bj-seat"><div class="seat-label">Место ${n}</div><div class="empty" style="padding:16px 0;">Свободно</div>
+        ${bjRound.status==='open' ? `<button class="ghost" onclick="sitAtSeat(${n})">Сесть</button>` : ''}
+      </div>`;
+      continue;
+    }
+    const isMine = seat.user_id === currentUser.id;
+    const isTurn = bjRound.status==='playing' && bjRound.current_turn_seat===n;
+    const cardsHtml = (seat.cards||[]).map(c=>{ const si=suitInfo(c.suit); return `<div class="card-chip" style="color:${si.color}"><span>${c.rank}</span><span>${si.symbol}</span></div>`; }).join('');
+    let footer = '';
+    if(bjRound.status==='open'){
+      if(!seat.bet){
+        footer = isMine
+          ? `<div class="form-row" style="justify-content:center;"><input type="number" id="bjBetAmount" min="100" max="10000" step="100" value="100" style="width:90px;"><button onclick="placeBjBet()">Ставка</button></div><button class="ghost" onclick="leaveSeat()">Встать</button>`
+          : `<span class="tag-chip">Ставка не сделана</span>`;
+      } else {
+        footer = `<span class="tag-chip">Ставка: ${fmtMoney(seat.bet)}</span>` + (isMine ? `<button class="ghost" onclick="leaveSeat()">Встать</button>` : '');
+      }
+    } else if(bjRound.status==='playing'){
+      footer = `<span class="tag-chip">${handValue(seat.cards)} очков</span>`;
+      if(isTurn && isMine && seat.status==='active'){
+        footer += `<div class="form-row" style="justify-content:center; margin-top:6px;"><button onclick="bjHit()">Ещё</button><button class="ghost" onclick="bjStand()">Хватит</button></div>`;
+      } else if(seat.status==='bust'){ footer += `<div style="color:var(--rust); font-weight:600;">Перебор</div>`; }
+      else if(seat.status==='blackjack'){ footer += `<div style="color:var(--sage); font-weight:600;">Блэкджек!</div>`; }
+      else if(seat.status==='stood'){ footer += `<div style="color:var(--muted);">Хватит</div>`; }
+      else if(seat.status==='active'){ footer += `<div style="color:var(--muted); font-size:11.5px;">Ждёт хода...</div>`; }
+    } else {
+      footer = `<span class="tag-chip">${handValue(seat.cards)} очков</span>`;
+      if(seat.result==='win') footer += `<div style="color:var(--sage); font-weight:600;">Выигрыш ${fmtMoney(seat.payout)}</div>`;
+      else if(seat.result==='blackjack') footer += `<div style="color:var(--sage); font-weight:600;">Блэкджек! ${fmtMoney(seat.payout)}</div>`;
+      else if(seat.result==='push') footer += `<div style="color:var(--muted);">Ничья</div>`;
+      else footer += `<div style="color:var(--rust);">Проигрыш</div>`;
+    }
+    seatsHtml += `<div class="bj-seat ${isMine?'mine':''} ${isTurn?'turn':''}">
+      <div class="seat-label">Место ${n} · ${escapeHtml(usernameById(seat.user_id))}${isMine?' (ты)':''}</div>
+      <div class="bj-hand">${cardsHtml}</div>
+      ${footer}
+    </div>`;
+  }
+  if(bjRound.status==='open' && bjSeats.some(s=>s.bet)){
+    seatsHtml += `<div class="bj-seat bj-seat-start"><button onclick="startBjRound()">🃏 Старт</button></div>`;
+  }
+  seatsEl.innerHTML = seatsHtml;
+}
+
+async function initBlackjack(){
+  await ensureHorseBalance();
+  await loadBjRound();
+  await loadBjSeats();
+  renderBlackjack();
+  if(bjSyncTimer) clearInterval(bjSyncTimer);
+  bjSyncTimer = setInterval(bjSyncTick, 2000);
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -1354,6 +1651,7 @@ function initApp(){
   newGame();
   loadLeaderboard().then(renderLeaderboard);
   initHorseGame();
+  initBlackjack();
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
