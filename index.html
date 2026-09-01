@@ -321,6 +321,20 @@
   .bottom-nav a,.bottom-nav button{flex:1;border:0;background:none;min-height:64px;font-size:11px!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
 }
 @media (min-width:701px){.bottom-nav{display:none!important;}}
+
+/* Blackjack history */
+.bj-history-round{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:var(--paper)}
+.bj-history-head{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:10px;color:var(--muted)}
+.bj-history-dealer{padding-bottom:10px;border-bottom:1px solid var(--line)}
+.bj-history-player{padding:10px 0;border-bottom:1px dashed var(--line)}
+.bj-history-player:last-child{border-bottom:0}
+.bj-history-player.mine{background:var(--soft);border-radius:10px;padding:10px}
+.bj-history-result{margin-top:6px;font-weight:700}
+@media(max-width:600px){
+  .bj-history-round{padding:10px;border-radius:12px}
+  .bj-history-head{font-size:11px}
+  .bj-history-round .card-chip{min-width:36px;height:52px;font-size:15px}
+}
 </style>
 </head>
 <body>
@@ -440,6 +454,10 @@
           <div class="bj-hand" id="bjDealerHand"></div>
         </div>
         <div class="bj-seats" id="bjSeatsGrid"></div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h3 style="font-size:15px; margin-bottom:14px;">📜 История игр</h3>
+        <div id="bjHistoryList"></div>
       </div>
     </div>
 
@@ -1382,6 +1400,8 @@ const BJ_RANKS = [
 let bjRound = null;
 let bjSeats = [];
 let bjSyncTimer = null;
+let bjHistory = [];
+let bjFinishedShownUntil = 0;
 
 function buildBjDeck(){
   const deck = [];
@@ -1397,14 +1417,29 @@ function handValue(cards){
 function isBjBlackjack(cards){ return cards.length===2 && handValue(cards)===21; }
 function getMySeat(){ return bjSeats.find(s=>s.user_id===currentUser.id) || null; }
 
-async function loadBjRound(){
+async function loadBjRound(forceNext=false){
   let {data} = await sb.from('blackjack_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
-  if(!data || data.status==='finished'){
+  if(!data){
+    await createNextBjRound();
+    ({data} = await sb.from('blackjack_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+  } else if(data.status==='finished' && (forceNext || Date.now() > bjFinishedShownUntil)){
     await createNextBjRound();
     ({data} = await sb.from('blackjack_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
   }
   bjRound = data;
 }
+
+async function loadBjHistory(){
+  const {data: rounds} = await sb.from('blackjack_rounds')
+    .select('*').eq('status','finished').order('finished_at',{ascending:false}).limit(10);
+  const result=[];
+  for(const r of (rounds||[])){
+    const {data: seats} = await sb.from('blackjack_seats').select('*').eq('round_id',r.id).order('seat_no');
+    result.push({...r, seats: seats||[]});
+  }
+  bjHistory=result;
+}
+
 async function createNextBjRound(){
   try{ await sb.from('blackjack_rounds').insert({status:'open'}); }
   catch(e){ /* уже есть открытый стол — норм */ }
@@ -1554,10 +1589,12 @@ async function resolveDealerAndFinish(){
   const {data} = await sb.from('blackjack_rounds')
     .update({status:'finished', dealer_cards:dealerCards, deck, finished_at:new Date().toISOString()})
     .eq('id', bjRound.id).eq('status','playing').select().maybeSingle();
-  if(data) bjRound = data;
-  await createNextBjRound();
-  await loadBjRound();
+  if(data) {
+    bjRound = data;
+    bjFinishedShownUntil = Date.now() + 12000;
+  }
   await loadBjSeats();
+  await loadBjHistory();
   renderBlackjack();
 }
 
@@ -1567,7 +1604,15 @@ async function bjSyncTick(){
     const {data} = await sb.from('blackjack_rounds').select('*').eq('id', bjRound.id).maybeSingle();
     if(data) bjRound = data;
     await loadBjSeats();
-    if(bjRound.status==='finished'){ await loadBjRound(); await loadBjSeats(); }
+    if(bjRound.status==='finished'){
+      if(Date.now() <= bjFinishedShownUntil){
+        await loadBjSeats();
+      } else {
+        await loadBjRound();
+        await loadBjSeats();
+      }
+    }
+    await loadBjHistory();
     await refreshMyBalance();
   }catch(e){ console.error('bj sync error', e); }
   renderBlackjack();
@@ -1658,12 +1703,41 @@ function renderBlackjack(){
     seatsHtml += `<div class="bj-seat bj-seat-start"><button onclick="startBjRound()">🃏 Старт</button></div>`;
   }
   seatsEl.innerHTML = seatsHtml;
+
+  const histEl = document.getElementById('bjHistoryList');
+  if(histEl){
+    histEl.innerHTML = bjHistory.length===0 ? `<div class="empty">Завершённых игр пока нет.</div>` : bjHistory.map((r,ri)=>{
+      const dc=r.dealer_cards||[];
+      const dealerHtml=dc.map(c=>bjCardHtml(c,false)).join('');
+      const time=r.finished_at ? new Date(r.finished_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      const players=(r.seats||[]).map(seat=>{
+        const mine=seat.user_id===currentUser.id;
+        const cards=(seat.cards||[]).map(c=>bjCardHtml(c,false)).join('');
+        let result='';
+        if(seat.result==='win') result=`<span class="bj-outcome win">Победа +${fmtMoney((seat.payout||0)-(seat.bet||0))}</span>`;
+        else if(seat.result==='blackjack') result=`<span class="bj-outcome win">Блэкджек +${fmtMoney((seat.payout||0)-(seat.bet||0))}</span>`;
+        else if(seat.result==='push') result=`<span class="bj-outcome push">Ничья +$0</span>`;
+        else result=`<span class="bj-outcome lose">Проигрыш −${fmtMoney(seat.bet||0)}</span>`;
+        return `<div class="bj-history-player ${mine?'mine':''}">
+          <div class="seat-label">${mine?'👤 ':''}Игрок ${seat.seat_no} · ${escapeHtml(usernameById(seat.user_id))}</div>
+          <div class="bj-hand">${cards}<span class="bj-points">${handValue(seat.cards||[])} очков</span></div>
+          <div class="bj-history-result">${result}</div>
+        </div>`;
+      }).join('');
+      return `<div class="bj-history-round">
+        <div class="bj-history-head"><strong>Игра #${bjHistory.length-ri}</strong><span>${time}</span></div>
+        <div class="bj-history-dealer"><div class="seat-label">Дилер · ${handValue(dc)} очков</div><div class="bj-hand">${dealerHtml}</div></div>
+        <div class="bj-history-players">${players || '<div class="empty">Игроков нет</div>'}</div>
+      </div>`;
+    }).join('');
+  }
 }
 
 async function initBlackjack(){
   await ensureHorseBalance();
   await loadBjRound();
   await loadBjSeats();
+  await loadBjHistory();
   renderBlackjack();
   if(bjSyncTimer) clearInterval(bjSyncTimer);
   bjSyncTimer = setInterval(bjSyncTick, 2000);
