@@ -217,6 +217,39 @@
   .lb-row.me{background:#FCEBD2; border-radius:6px; padding-left:8px;}
   .lb-name{flex:1; font-weight:500;}
   .lb-wins{font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--sage);}
+
+  /* ---- HORSES ---- */
+  .horse-top{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;}
+  .horse-balance{font-size:18px; font-weight:700;}
+  .horse-status-label{font-size:13px; font-weight:600; color:var(--muted);}
+  .horse-status-label.open{color:var(--sage);}
+  .horse-status-label.running{color:var(--amber);}
+  .horse-lane{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
+  .horse-lane .suit-tag{width:74px; flex-shrink:0; font-size:13px; font-weight:600; display:flex; align-items:center; gap:5px;}
+  .horse-lane .lane-track{flex:1; position:relative; height:26px; background:var(--paper); border-radius:6px; overflow:hidden;}
+  .horse-lane .lane-fill{position:absolute; left:0; top:0; bottom:0; border-radius:6px; transition:width .5s ease;}
+  .horse-lane .lane-horse{position:absolute; top:50%; transform:translate(-50%,-50%); font-size:18px; transition:left .5s ease;}
+  .horse-lane .lane-finish{position:absolute; right:2px; top:0; bottom:0; width:2px; background:var(--ink); opacity:.3;}
+  .horse-lane .odds-tag{width:56px; flex-shrink:0; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted);}
+  .horse-cards{display:flex; gap:6px; flex-wrap:wrap; min-height:34px; margin:14px 0;}
+  .card-chip{
+    width:36px; height:48px; border:1px solid var(--line); border-radius:5px; background:#fff;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:700;
+  }
+  .horse-controls{border-top:1px solid var(--line); padding-top:14px;}
+  .bet-suits{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+  .bet-suit-btn{
+    flex:1; min-width:110px; padding:10px; border-radius:8px; border:2px solid var(--line); background:#fff;
+    cursor:pointer; text-align:center; font-family:'Space Grotesk', sans-serif;
+  }
+  .bet-suit-btn.selected{border-color:var(--ink); background:var(--paper);}
+  .bet-suit-btn .sym{font-size:20px;}
+  .bet-suit-btn .odds{font-size:11px; color:var(--muted); font-family:'IBM Plex Mono', monospace;}
+  .my-bet-box{background:var(--paper); border-radius:8px; padding:12px 14px; font-size:13.5px;}
+  .race-row{display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13px;}
+  .race-row:last-child{border-bottom:none;}
+  .race-row .time{color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11.5px; width:100px; flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -254,6 +287,7 @@
     <button class="tab" data-tab="schedule">Расписание</button>
     <button class="tab" data-tab="projects">Проекты и время</button>
     <button class="tab" data-tab="game">Игра 🎲</button>
+    <button class="tab" data-tab="horses">Скачки 🐎</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -287,6 +321,32 @@
       <div class="card" style="margin-top:16px;">
         <h3 style="font-size:15px; margin-bottom:14px;">🏆 Таблица лидеров — угадано слов за всё время</h3>
         <div id="leaderboardList"></div>
+      </div>
+    </div>
+
+    <!-- HORSES -->
+    <div class="panel" id="panel-horses">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="horse-top">
+          <div>Твой баланс: <span class="mono horse-balance" id="horseBalanceLabel">$0</span></div>
+          <div class="horse-status-label" id="horseStatusLabel"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="horse-track" id="horseTrack"></div>
+        <div class="horse-cards" id="horseCards"></div>
+        <div class="horse-controls" id="horseControls"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; margin-bottom:14px;">История гонок</h3>
+        <div id="raceHistoryList"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:15px; margin-bottom:14px;">💰 Баланс игроков</h3>
+        <div id="horseBalancesList"></div>
       </div>
     </div>
 
@@ -727,9 +787,22 @@ const RU_ALPHABET = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬ�
 const MAX_WRONG = 6;
 let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0, winRecorded = false;
 let leaderboard = [];
+let wordBag = [];
 
+function shuffleArray(arr){
+  for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+  return arr;
+}
+function refillWordBag(excludeWord){
+  const bag = shuffleArray([...WORD_BANK]);
+  if(excludeWord && bag.length>1 && bag[0].word===excludeWord){
+    [bag[0], bag[1]] = [bag[1], bag[0]];
+  }
+  wordBag = bag;
+}
 function newGame(){
-  const entry = WORD_BANK[Math.floor(Math.random()*WORD_BANK.length)];
+  if(wordBag.length===0) refillWordBag(gameWord);
+  const entry = wordBag.pop();
   gameWord = entry.word;
   gameCategory = entry.category;
   guessedSet = new Set();
@@ -799,6 +872,306 @@ function renderLeaderboard(){
   }).join('');
 }
 
+/* ============ HORSES: скачки ============ */
+const SUITS = [
+  {key:'spades', symbol:'♠', name:'Пики', color:'#1B1F3B'},
+  {key:'hearts', symbol:'♥', name:'Черви', color:'#B23A48'},
+  {key:'diamonds', symbol:'♦', name:'Бубны', color:'#E8A33D'},
+  {key:'clubs', symbol:'♣', name:'Трефы', color:'#5C8374'},
+];
+const FINISH_STEPS = 5;
+const SHUFFLE_MS = 2500;
+const CARD_MS = 1300;
+
+let horseBalance = 0;
+let currentRace = null;
+let myBet = null;
+let horseStats = {};
+let raceHistory = [];
+let horseBalancesTop = [];
+let selectedBetSuit = null;
+let horseSyncTimer = null, horseAnimTimer = null;
+
+function suitInfo(key){ return SUITS.find(s=>s.key===key); }
+
+function buildShuffledDeck(){
+  const deck = [];
+  SUITS.forEach(s=>{ for(let r=1;r<=10;r++) deck.push({suit:s.key, rank:r}); });
+  return shuffleArray(deck);
+}
+function simulateRace(){
+  const deck = buildShuffledDeck();
+  const pos = {spades:0, hearts:0, diamonds:0, clubs:0};
+  const draws = [];
+  let winner = null;
+  for(const card of deck){
+    draws.push(card);
+    pos[card.suit]++;
+    if(pos[card.suit] >= FINISH_STEPS){ winner = card.suit; break; }
+  }
+  return {draws, winner};
+}
+function currentOdds(suitKey){
+  const s = horseStats[suitKey] || {wins:0, races:0};
+  const p = (s.wins + 1) / (s.races + 4);
+  return Math.max(1.2, +(1/p).toFixed(2));
+}
+
+async function ensureHorseBalance(){
+  const {data} = await sb.from('horse_balances').select('balance').eq('user_id', currentUser.id).maybeSingle();
+  if(data){ horseBalance = Number(data.balance); return; }
+  const {data: scoreRow} = await sb.from('game_scores').select('wins').eq('user_id', currentUser.id).maybeSingle();
+  const wins = scoreRow?.wins || 0;
+  const startBalance = wins * 100;
+  await sb.from('horse_balances').upsert({user_id:currentUser.id, balance:startBalance});
+  horseBalance = startBalance;
+}
+async function loadHorseStats(){
+  const {data} = await sb.from('horse_stats').select('*');
+  horseStats = {};
+  (data||[]).forEach(r=>{ horseStats[r.suit] = r; });
+}
+async function loadCurrentRace(){
+  let {data} = await sb.from('horse_races').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(!data || data.status==='finished'){
+    await createNextRace();
+    ({data} = await sb.from('horse_races').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+  }
+  currentRace = data;
+}
+async function createNextRace(){
+  try{ await sb.from('horse_races').insert({status:'betting', scheduled_start:new Date(Date.now()+30*60000).toISOString()}); }
+  catch(e){ /* другой клиент уже создал — не страшно */ }
+}
+async function loadMyBet(){
+  myBet = null;
+  if(!currentRace) return;
+  const {data} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id).eq('user_id', currentUser.id).maybeSingle();
+  myBet = data || null;
+}
+async function loadRaceHistory(){
+  const {data} = await sb.from('horse_races').select('*').eq('status','finished').order('finished_at',{ascending:false}).limit(10);
+  raceHistory = data || [];
+}
+async function loadHorseBalancesTop(){
+  const {data} = await sb.from('horse_balances').select('user_id,balance').order('balance',{ascending:false}).limit(20);
+  horseBalancesTop = data || [];
+}
+
+function selectBetSuit(key){ selectedBetSuit = key; renderHorseGame(); }
+
+async function placeBet(){
+  const amountInput = document.getElementById('betAmount');
+  const amount = parseInt(amountInput.value, 10);
+  if(!selectedBetSuit){ alert('Выберите лошадь'); return; }
+  if(!amount || amount < 100 || amount > 10000){ alert('Ставка от $100 до $10000'); return; }
+  if(amount > horseBalance){ alert('Недостаточно средств'); return; }
+  if(!currentRace || currentRace.status !== 'betting'){ alert('Ставки сейчас закрыты'); return; }
+  const odds = currentOdds(selectedBetSuit);
+  try{
+    const {error: betErr} = await sb.from('horse_bets').insert({race_id:currentRace.id, suit:selectedBetSuit, amount, odds});
+    if(betErr) throw betErr;
+    const newBalance = horseBalance - amount;
+    const {error: balErr} = await sb.from('horse_balances').update({balance:newBalance}).eq('user_id', currentUser.id);
+    if(balErr) throw balErr;
+    horseBalance = newBalance;
+    myBet = {suit:selectedBetSuit, amount, odds};
+    renderHorseGame();
+  }catch(e){ alert('Не удалось поставить: '+e.message); }
+}
+
+async function startRaceNow(){
+  if(!currentRace || currentRace.status!=='betting') return;
+  await tryStartRace();
+}
+async function tryStartRace(){
+  const sim = simulateRace();
+  const {data} = await sb.from('horse_races')
+    .update({status:'running', started_at:new Date().toISOString(), draw_sequence:sim.draws, winner_suit:sim.winner})
+    .eq('id', currentRace.id).eq('status','betting')
+    .select().maybeSingle();
+  if(data){ currentRace = data; }
+  else{ await loadCurrentRace(); }
+  renderHorseGame();
+}
+
+async function finalizeRace(){
+  if(!currentRace || currentRace.status!=='running') return;
+  const totalDuration = SHUFFLE_MS + currentRace.draw_sequence.length*CARD_MS + 600;
+  const elapsed = Date.now() - new Date(currentRace.started_at).getTime();
+  if(elapsed < totalDuration) return;
+
+  const {data} = await sb.from('horse_races')
+    .update({status:'finished', finished_at:new Date().toISOString()})
+    .eq('id', currentRace.id).eq('status','running')
+    .select().maybeSingle();
+  if(!data){ await loadCurrentRace(); await loadMyBet(); renderHorseGame(); return; }
+  currentRace = data;
+
+  const {data: bets} = await sb.from('horse_bets').select('*').eq('race_id', currentRace.id);
+  for(const bet of (bets||[])){
+    const won = bet.suit === currentRace.winner_suit;
+    const payout = won ? +(bet.amount * bet.odds).toFixed(2) : 0;
+    await sb.from('horse_bets').update({payout}).eq('id', bet.id);
+    if(won){
+      const {data: balRow} = await sb.from('horse_balances').select('balance').eq('user_id', bet.user_id).maybeSingle();
+      const newBal = (balRow?.balance || 0) + payout;
+      await sb.from('horse_balances').update({balance:newBal}).eq('user_id', bet.user_id);
+      if(bet.user_id === currentUser.id) horseBalance = newBal;
+    }
+  }
+  for(const s of SUITS){
+    const cur = horseStats[s.key] || {wins:0, races:0};
+    const isWinner = s.key === currentRace.winner_suit;
+    await sb.from('horse_stats').update({races:cur.races+1, wins:cur.wins+(isWinner?1:0)}).eq('suit', s.key);
+  }
+  await loadHorseStats();
+  await createNextRace();
+  await loadCurrentRace();
+  await loadRaceHistory();
+  await loadHorseBalancesTop();
+  myBet = null;
+  selectedBetSuit = null;
+  renderHorseGame();
+}
+
+async function horseSyncTick(){
+  try{
+    if(!currentRace) return;
+    if(currentRace.status === 'betting' && new Date(currentRace.scheduled_start).getTime() <= Date.now()){
+      await tryStartRace();
+    } else if(currentRace.status === 'running'){
+      await finalizeRace();
+    } else {
+      const {data} = await sb.from('horse_races').select('*').eq('id', currentRace.id).maybeSingle();
+      if(data && data.status !== currentRace.status){ currentRace = data; await loadMyBet(); if(data.status==='finished'){ await loadRaceHistory(); await loadHorseBalancesTop(); } }
+    }
+  }catch(e){ console.error('horse sync error', e); }
+  renderHorseGame();
+}
+
+function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('ru-RU'); }
+function fmtCountdown(ms){
+  if(ms<0) ms=0;
+  const m = Math.floor(ms/60000), s = Math.floor((ms%60000)/1000);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function renderHorseGame(){
+  document.getElementById('horseBalanceLabel').textContent = fmtMoney(horseBalance);
+  const statusEl = document.getElementById('horseStatusLabel');
+  const trackEl = document.getElementById('horseTrack');
+  const cardsEl = document.getElementById('horseCards');
+  const controlsEl = document.getElementById('horseControls');
+
+  if(!currentRace){ statusEl.textContent = 'Загрузка...'; return; }
+
+  let positions = {spades:0, hearts:0, diamonds:0, clubs:0};
+  let revealedCards = [];
+
+  if(currentRace.status === 'betting'){
+    statusEl.className = 'horse-status-label open';
+    statusEl.textContent = `Ставки открыты · старт через ${fmtCountdown(new Date(currentRace.scheduled_start)-Date.now())}`;
+  } else if(currentRace.status === 'running'){
+    const elapsed = Date.now() - new Date(currentRace.started_at).getTime();
+    const cardElapsed = elapsed - SHUFFLE_MS;
+    if(cardElapsed < 0){
+      statusEl.className = 'horse-status-label running';
+      statusEl.textContent = '🔀 Тасуем колоду...';
+    } else {
+      const idx = Math.min(currentRace.draw_sequence.length, Math.floor(cardElapsed/CARD_MS)+1);
+      revealedCards = currentRace.draw_sequence.slice(0, idx);
+      revealedCards.forEach(c=>{ positions[c.suit] = Math.min(FINISH_STEPS, positions[c.suit]+1); });
+      statusEl.className = 'horse-status-label running';
+      statusEl.textContent = '🐎 Гонка идёт!';
+    }
+  } else {
+    revealedCards = currentRace.draw_sequence || [];
+    revealedCards.forEach(c=>{ positions[c.suit] = Math.min(FINISH_STEPS, positions[c.suit]+1); });
+    statusEl.className = 'horse-status-label';
+    const w = suitInfo(currentRace.winner_suit);
+    statusEl.textContent = `🏁 Победила ${w.symbol} ${w.name}! Следующая гонка скоро.`;
+  }
+
+  trackEl.innerHTML = SUITS.map(s=>{
+    const steps = positions[s.key];
+    const pct = (steps/FINISH_STEPS)*100;
+    const oddsOrSteps = currentRace.status==='betting'
+      ? `x${currentOdds(s.key).toFixed(2)}`
+      : `${steps}/${FINISH_STEPS}`;
+    return `<div class="horse-lane">
+      <div class="suit-tag" style="color:${s.color}">${s.symbol} ${s.name}</div>
+      <div class="lane-track">
+        <div class="lane-fill" style="width:${pct}%; background:${s.color}22;"></div>
+        <div class="lane-finish"></div>
+        <div class="lane-horse" style="left:calc(${pct}% )">🐎</div>
+      </div>
+      <div class="odds-tag">${oddsOrSteps}</div>
+    </div>`;
+  }).join('');
+
+  cardsEl.innerHTML = revealedCards.map(c=>{
+    const s = suitInfo(c.suit);
+    return `<div class="card-chip" style="color:${s.color}"><span>${c.rank}</span><span>${s.symbol}</span></div>`;
+  }).join('');
+
+  if(currentRace.status === 'betting'){
+    if(myBet){
+      const s = suitInfo(myBet.suit);
+      controlsEl.innerHTML = `<div class="my-bet-box">Твоя ставка: <b>${fmtMoney(myBet.amount)}</b> на ${s.symbol} ${s.name} (коэф. ×${myBet.odds}) — жди старта гонки.</div>`;
+    } else {
+      controlsEl.innerHTML = `
+        <div class="bet-suits" id="betSuitsWrap">
+          ${SUITS.map(s=>`<div class="bet-suit-btn ${selectedBetSuit===s.key?'selected':''}" onclick="selectBetSuit('${s.key}')">
+            <div class="sym" style="color:${s.color}">${s.symbol}</div>
+            <div>${s.name}</div>
+            <div class="odds">×${currentOdds(s.key).toFixed(2)}</div>
+          </div>`).join('')}
+        </div>
+        <div class="form-row">
+          <input type="number" id="betAmount" min="100" max="10000" step="100" value="100" style="width:120px;">
+          <button onclick="placeBet()">Поставить</button>
+          <button class="ghost" onclick="startRaceNow()">🏁 Начать сейчас</button>
+        </div>`;
+    }
+  } else {
+    controlsEl.innerHTML = myBet
+      ? `<div class="my-bet-box">Твоя ставка: ${fmtMoney(myBet.amount)} на ${suitInfo(myBet.suit).symbol} ${suitInfo(myBet.suit).name} (коэф. ×${myBet.odds})</div>`
+      : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`;
+  }
+
+  document.getElementById('raceHistoryList').innerHTML = raceHistory.length===0
+    ? `<div class="empty">Гонок пока не было.</div>`
+    : raceHistory.map(r=>{
+      const s = suitInfo(r.winner_suit);
+      const time = r.finished_at ? new Date(r.finished_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      return `<div class="race-row"><span class="time">${time}</span><span style="color:${s.color}; font-weight:600;">${s.symbol} ${s.name}</span></div>`;
+    }).join('');
+
+  document.getElementById('horseBalancesList').innerHTML = horseBalancesTop.length===0
+    ? `<div class="empty">Пока никто не играл.</div>`
+    : horseBalancesTop.map((row,i)=>{
+      const isMe = row.user_id === currentUser.id;
+      return `<div class="lb-row ${isMe?'me':''}"><span class="lb-rank">#${i+1}</span>
+        <span class="lb-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''}</span>
+        <span class="lb-wins">${fmtMoney(row.balance)}</span></div>`;
+    }).join('');
+}
+
+async function initHorseGame(){
+  await ensureHorseBalance();
+  await loadHorseStats();
+  await loadCurrentRace();
+  await loadMyBet();
+  await loadRaceHistory();
+  await loadHorseBalancesTop();
+  renderHorseGame();
+  if(horseSyncTimer) clearInterval(horseSyncTimer);
+  if(horseAnimTimer) clearInterval(horseAnimTimer);
+  horseSyncTimer = setInterval(horseSyncTick, 6000);
+  horseAnimTimer = setInterval(()=>{ if(currentRace && currentRace.status==='running') renderHorseGame(); }, 500);
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -828,6 +1201,7 @@ function initApp(){
   renderAssignLists();
   newGame();
   loadLeaderboard().then(renderLeaderboard);
+  initHorseGame();
 
   if(timerTick) clearInterval(timerTick);
   timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
