@@ -312,7 +312,7 @@
     image-rendering:auto;
   }
   .bj-dealer.dealing .bj-dealer-sprite{
-    animation:bjDealerDeal 1.55s steps(7,end) 1 forwards;
+    animation:bjDealerDeal 1.55s steps(6,end) 1 forwards;
   }
   @keyframes bjDealerDeal{
     from{background-position:0 0;}
@@ -2995,4 +2995,16 @@ document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.ke
 .bj-dealer-zone{overflow:visible!important;}
 .bj-dealer-stage{height:305px;min-height:305px;}
 @media(max-width:700px){.bj-dealer-stage{height:245px!important;min-height:245px!important;}.bj-dealer-zone{min-height:285px!important;}}
+</style>
+
+<style>
+/* Blackjack dealer sprite alignment: 7 frames, each exactly 180px wide. */
+.bj-dealer-sprite{background-size:1260px 293px;background-position:0 0;background-repeat:no-repeat;}
+.bj-dealer.dealing .bj-dealer-sprite{animation:bjDealerDealFixed 1.55s steps(6,end) 1 forwards;}
+@keyframes bjDealerDealFixed{from{background-position:0 0;}to{background-position:-1080px 0;}}
+@media(max-width:700px){
+  .bj-dealer-sprite{background-size:980px 228px;}
+  .bj-dealer.dealing .bj-dealer-sprite{animation:bjDealerDealFixedMobile 1.55s steps(6,end) 1 forwards;}
+  @keyframes bjDealerDealFixedMobile{from{background-position:0 0;}to{background-position:-840px 0;}}
+}
 </style>
