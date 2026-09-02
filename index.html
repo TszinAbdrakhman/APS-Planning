@@ -280,6 +280,63 @@
   @keyframes bjDeal{ from{opacity:0; transform:translateY(-16px) scale(.75) rotate(-6deg);} to{opacity:1; transform:translateY(0) scale(1) rotate(0);} }
   .card-chip.deal-in{animation:bjDeal .35s ease-out;}
   .bj-seat .form-row{justify-content:center;}
+
+  /* ---- MEMOS ---- */
+  .memo-textarea{
+    width:100%; min-height:64px; font-family:'IBM Plex Sans', sans-serif; font-size:13px;
+    padding:10px; border:1px solid var(--line); border-radius:6px; resize:vertical; margin:10px 0; box-sizing:border-box;
+  }
+  .memo-list{display:flex; flex-direction:column; gap:8px;}
+  .memo-card{
+    display:flex; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--line);
+    border-radius:10px; background:#fff; cursor:pointer;
+  }
+  .memo-card:hover{border-color:var(--ink);}
+  .memo-card .title{flex:1; font-weight:600; font-size:14px;}
+  .memo-card .progress-pill{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; padding:3px 9px; border-radius:12px;
+    background:var(--paper); color:var(--muted); flex-shrink:0;
+  }
+  .memo-card .progress-pill.done-all{background:#E3ECE7; color:var(--sage);}
+  .memo-desc{font-size:13.5px; color:var(--ink); white-space:pre-wrap; line-height:1.5;}
+  .memo-desc.placeholder{color:var(--muted); font-style:italic;}
+  .memo-item{border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px;}
+  .memo-item-row{display:flex; align-items:flex-start; gap:10px;}
+  .memo-item-row input[type=checkbox]{width:17px; height:17px; accent-color:var(--sage); cursor:pointer; margin-top:2px; flex-shrink:0;}
+  .memo-item-row .txt{flex:1; font-size:13.5px;}
+  .memo-item.done .txt{text-decoration:line-through; color:var(--muted);}
+  .memo-item-comment{margin-top:8px; margin-left:27px;}
+  .memo-item-comment textarea{
+    width:100%; min-height:44px; font-size:12.5px; padding:7px 9px; border:1px solid var(--line);
+    border-radius:6px; font-family:'IBM Plex Sans', sans-serif; box-sizing:border-box; resize:vertical;
+  }
+  .memo-item-comment .comment-text{font-size:12px; color:var(--muted); font-style:italic; cursor:pointer;}
+  .memo-item-comment .comment-text:hover{color:var(--ink);}
+
+  /* ---- BOARD ---- */
+  .board-wrap{
+    position:relative; min-height:520px; border:2px dashed var(--line); border-radius:14px;
+    background:repeating-linear-gradient(45deg, #f4f4f6, #f4f4f6 12px, #eeeef1 12px, #eeeef1 24px);
+    overflow:auto;
+  }
+  .sticky-note{
+    position:absolute; width:180px; border-radius:6px; box-shadow:0 4px 10px rgba(0,0,0,.15);
+    padding:10px; display:flex; flex-direction:column; gap:6px; cursor:grab;
+  }
+  .sticky-note.dragging{cursor:grabbing; opacity:.85; z-index:50;}
+  .sticky-note textarea{
+    width:100%; background:transparent; border:none; resize:none; font-family:'IBM Plex Sans', sans-serif;
+    font-size:13px; min-height:44px; box-sizing:border-box;
+  }
+  .sticky-note textarea:focus{outline:none;}
+  .sticky-note canvas{width:100%; height:90px; border-radius:4px; background:rgba(255,255,255,.35); cursor:crosshair; touch-action:none;}
+  .sticky-note-top{display:flex; justify-content:space-between; align-items:center;}
+  .sticky-colors{display:flex; gap:4px;}
+  .sticky-colors span{width:13px; height:13px; border-radius:50%; cursor:pointer; border:1px solid rgba(0,0,0,.15);}
+  .sticky-note .icon-btn{color:rgba(0,0,0,.45);}
+  .sticky-note .icon-btn:hover{color:var(--rust);}
+  .sticky-note-tools{display:flex; justify-content:flex-end; gap:6px;}
+  .sticky-note-tools button{font-size:10.5px; padding:3px 7px; background:rgba(255,255,255,.5); border:none; color:var(--ink);}
 </style>
 
 <style id="mobile-first-overrides">
@@ -370,7 +427,7 @@
     <button class="tab active" data-tab="suppliers">Поставщики</button>
     <button class="tab" data-tab="assign">Назначения <span class="count" id="assignCount" style="display:none;"></span></button>
     <button class="tab" data-tab="schedule">Расписание</button>
-    <button class="tab" data-tab="projects">Проекты и время</button>
+    <button class="tab" data-tab="notes">Заметки 📝</button>
     <button class="tab" data-tab="game">Игра 🎲</button>
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
@@ -582,18 +639,52 @@
       </div>
     </div>
 
-    <div class="panel" id="panel-projects">
-      <div class="proj-grid" id="projGrid"></div>
-      <div class="card add-proj">
-        <div class="form-row">
-          <input type="text" id="projName" placeholder="Название проекта">
-          <div class="swatches" id="projSwatches"></div>
-          <button onclick="addProject()">Добавить проект</button>
+    <div class="panel" id="panel-notes">
+      <div class="sup-subtabs">
+        <button class="sup-subtab active" data-sub="notes-memos">Памятки</button>
+        <button class="sup-subtab" data-sub="notes-board">Доска</button>
+      </div>
+
+      <div class="sup-subpanel active" id="notes-memos">
+        <div id="memoListView">
+          <div class="card" style="margin-bottom:16px;">
+            <div class="form-row">
+              <input type="text" id="memoTitle" placeholder="Тема задания">
+            </div>
+            <textarea id="memoDescription" placeholder="Описание (необязательно)" class="memo-textarea"></textarea>
+            <button onclick="createMemo()">Добавить памятку</button>
+          </div>
+          <div class="memo-list" id="memoList"></div>
+        </div>
+
+        <div id="memoDetailView" style="display:none;">
+          <div class="sup-detail-head">
+            <button class="ghost" onclick="closeMemo()">← К списку</button>
+            <h2 id="memoDetailTitle"></h2>
+            <button class="ghost danger" onclick="deleteMemo()">Удалить памятку</button>
+          </div>
+          <div class="card" style="margin-bottom:16px;">
+            <div class="memo-desc" id="memoDetailDescription"></div>
+          </div>
+          <div class="card">
+            <h3 style="font-size:14px; margin-bottom:12px;">Пункты выполнения</h3>
+            <div id="memoItemsList"></div>
+            <div class="form-row" style="margin-top:12px;">
+              <input type="text" id="memoItemInput" placeholder="Новый пункт...">
+              <button onclick="addMemoItem()">Добавить</button>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="card" style="margin-top:16px;">
-        <h3 style="margin-bottom:14px; font-size:15px;">Часы за последние 7 дней</h3>
-        <div class="week-chart" id="weekChart"></div>
+
+      <div class="sup-subpanel" id="notes-board">
+        <div class="card" style="margin-bottom:14px;">
+          <div class="form-row">
+            <span style="font-size:12.5px; color:var(--muted);">Доска общая — стикеры видят все.</span>
+            <button onclick="addStickyNote()" style="margin-left:auto;">+ Добавить стикер</button>
+          </div>
+        </div>
+        <div class="board-wrap" id="boardWrap"></div>
       </div>
     </div>
 
@@ -1743,6 +1834,303 @@ async function initBlackjack(){
   bjSyncTimer = setInterval(bjSyncTick, 2000);
 }
 
+/* ============ MEMOS: памятки ============ */
+let memos = [];
+let currentMemo = null; // {id,title,description,items:[...]}
+let editingMemoItemComment = null;
+
+async function loadMemos(){
+  const {data, error} = await sb.from('memos').select('*, memo_items(*)').order('created_at', {ascending:false});
+  if(error){ console.error(error); return; }
+  memos = (data||[]).map(m=>({
+    id:m.id, title:m.title, description:m.description||'',
+    items:(m.memo_items||[]).sort((a,b)=>a.item_order-b.item_order).map(i=>({id:i.id, text:i.text, done:i.done, comment:i.comment||''}))
+  }));
+}
+async function createMemo(){
+  const title = document.getElementById('memoTitle').value.trim();
+  const description = document.getElementById('memoDescription').value.trim();
+  if(!title) return;
+  try{
+    const {data, error} = await sb.from('memos').insert({title, description:description||null}).select().single();
+    if(error) throw error;
+    memos.unshift({id:data.id, title, description, items:[]});
+    document.getElementById('memoTitle').value = '';
+    document.getElementById('memoDescription').value = '';
+    renderMemoList();
+  }catch(e){ alert('Не удалось создать памятку: '+e.message); }
+}
+function renderMemoList(){
+  const el = document.getElementById('memoList');
+  if(!el) return;
+  if(memos.length===0){ el.innerHTML = `<div class="empty">Памяток пока нет — добавь первую выше.</div>`; return; }
+  el.innerHTML = memos.map(m=>{
+    const total = m.items.length;
+    const done = m.items.filter(i=>i.done).length;
+    const pillLabel = total===0 ? 'без пунктов' : `${done}/${total}`;
+    const pillClass = total>0 && done===total ? 'done-all' : '';
+    return `<div class="memo-card" onclick="openMemo('${m.id}')">
+      <div class="title">${escapeHtml(m.title)}</div>
+      <span class="progress-pill ${pillClass}">${pillLabel}</span>
+    </div>`;
+  }).join('');
+}
+function openMemo(id){
+  currentMemo = memos.find(m=>m.id===id);
+  if(!currentMemo) return;
+  document.getElementById('memoListView').style.display = 'none';
+  document.getElementById('memoDetailView').style.display = 'block';
+  document.getElementById('memoDetailTitle').textContent = currentMemo.title;
+  const descEl = document.getElementById('memoDetailDescription');
+  descEl.className = 'memo-desc ' + (currentMemo.description ? '' : 'placeholder');
+  descEl.textContent = currentMemo.description || 'Без описания';
+  editingMemoItemComment = null;
+  renderMemoItems();
+}
+function closeMemo(){
+  currentMemo = null;
+  document.getElementById('memoListView').style.display = 'block';
+  document.getElementById('memoDetailView').style.display = 'none';
+  renderMemoList();
+}
+async function deleteMemo(){
+  if(!currentMemo) return;
+  try{
+    const {error} = await sb.from('memos').delete().eq('id', currentMemo.id);
+    if(error) throw error;
+    memos = memos.filter(m=>m.id!==currentMemo.id);
+    closeMemo();
+  }catch(e){ alert('Не удалось удалить: '+e.message); }
+}
+async function addMemoItem(){
+  if(!currentMemo) return;
+  const input = document.getElementById('memoItemInput');
+  const text = input.value.trim();
+  if(!text) return;
+  const order = currentMemo.items.length;
+  try{
+    const {data, error} = await sb.from('memo_items').insert({memo_id:currentMemo.id, text, item_order:order}).select().single();
+    if(error) throw error;
+    currentMemo.items.push({id:data.id, text, done:false, comment:''});
+    input.value = '';
+    renderMemoItems();
+  }catch(e){ alert('Не удалось добавить пункт: '+e.message); }
+}
+async function toggleMemoItem(itemId){
+  const item = currentMemo.items.find(i=>i.id===itemId);
+  const newDone = !item.done;
+  try{
+    const {error} = await sb.from('memo_items').update({done:newDone}).eq('id', itemId);
+    if(error) throw error;
+    item.done = newDone;
+    renderMemoItems();
+  }catch(e){ alert('Не удалось обновить: '+e.message); }
+}
+async function deleteMemoItem(itemId){
+  try{
+    const {error} = await sb.from('memo_items').delete().eq('id', itemId);
+    if(error) throw error;
+    currentMemo.items = currentMemo.items.filter(i=>i.id!==itemId);
+    renderMemoItems();
+  }catch(e){ alert('Не удалось удалить: '+e.message); }
+}
+function startEditMemoComment(itemId){ editingMemoItemComment = itemId; renderMemoItems(); }
+function cancelEditMemoComment(){ editingMemoItemComment = null; renderMemoItems(); }
+async function saveMemoComment(itemId){
+  const ta = document.getElementById('memoCommentEdit_'+itemId);
+  const newComment = ta.value.trim();
+  try{
+    const {error} = await sb.from('memo_items').update({comment:newComment || null}).eq('id', itemId);
+    if(error) throw error;
+    const item = currentMemo.items.find(i=>i.id===itemId);
+    item.comment = newComment;
+    editingMemoItemComment = null;
+    renderMemoItems();
+  }catch(e){ alert('Не удалось сохранить комментарий: '+e.message); }
+}
+function renderMemoItems(){
+  const el = document.getElementById('memoItemsList');
+  if(!currentMemo || currentMemo.items.length===0){ el.innerHTML = `<div class="empty">Пунктов пока нет.</div>`; return; }
+  el.innerHTML = currentMemo.items.map(item=>{
+    let commentHtml;
+    if(item.id === editingMemoItemComment){
+      commentHtml = `<div class="memo-item-comment">
+        <textarea id="memoCommentEdit_${item.id}">${escapeHtml(item.comment||'')}</textarea>
+        <div class="form-row" style="margin-top:6px;">
+          <button onclick="saveMemoComment('${item.id}')">Сохранить</button>
+          <button class="ghost" onclick="cancelEditMemoComment()">Отмена</button>
+        </div>
+      </div>`;
+    } else {
+      commentHtml = `<div class="memo-item-comment">
+        <span class="comment-text" onclick="startEditMemoComment('${item.id}')">
+          ${item.comment ? '💬 '+escapeHtml(item.comment) : '+ добавить комментарий (если были трудности)'}
+        </span>
+      </div>`;
+    }
+    return `<div class="memo-item ${item.done?'done':''}">
+      <div class="memo-item-row">
+        <input type="checkbox" ${item.done?'checked':''} onchange="toggleMemoItem('${item.id}')">
+        <div class="txt">${escapeHtml(item.text)}</div>
+        <button class="icon-btn" onclick="deleteMemoItem('${item.id}')">✕</button>
+      </div>
+      ${commentHtml}
+    </div>`;
+  }).join('');
+}
+
+/* ============ BOARD: доска стикеров ============ */
+const STICKY_COLORS = ['#FFF3B0','#FFD6E0','#C9F2C7','#C6E2FF','#E6D5FF'];
+let boardNotes = [];
+let boardSyncTimer = null;
+let boardDirty = false; // не перерисовывать, пока идёт перетаскивание/рисование
+
+async function loadBoardNotes(){
+  const {data, error} = await sb.from('board_notes').select('*').order('updated_at');
+  if(error){ console.error(error); return; }
+  boardNotes = data || [];
+}
+async function addStickyNote(){
+  const wrap = document.getElementById('boardWrap');
+  const x = 20 + Math.random()*(Math.max(200, wrap.clientWidth-220));
+  const y = 20 + Math.random()*300;
+  const color = STICKY_COLORS[Math.floor(Math.random()*STICKY_COLORS.length)];
+  try{
+    const {data, error} = await sb.from('board_notes').insert({x, y, color, text:''}).select().single();
+    if(error) throw error;
+    boardNotes.push(data);
+    renderBoard();
+  }catch(e){ alert('Не удалось добавить стикер: '+e.message); }
+}
+async function deleteStickyNote(id){
+  try{
+    const {error} = await sb.from('board_notes').delete().eq('id', id);
+    if(error) throw error;
+    boardNotes = boardNotes.filter(n=>n.id!==id);
+    renderBoard();
+  }catch(e){ alert('Не удалось удалить: '+e.message); }
+}
+async function setStickyColor(id, color){
+  const note = boardNotes.find(n=>n.id===id);
+  if(note) note.color = color;
+  try{ await sb.from('board_notes').update({color}).eq('id', id); }catch(e){}
+  renderBoard();
+}
+async function saveStickyText(id, text){
+  const note = boardNotes.find(n=>n.id===id);
+  if(note) note.text = text;
+  try{ await sb.from('board_notes').update({text}).eq('id', id); }catch(e){}
+}
+async function saveStickyPosition(id, x, y){
+  const note = boardNotes.find(n=>n.id===id);
+  if(note){ note.x = x; note.y = y; }
+  try{ await sb.from('board_notes').update({x, y}).eq('id', id); }catch(e){}
+}
+async function saveStickyDrawing(id, dataUrl){
+  const note = boardNotes.find(n=>n.id===id);
+  if(note) note.drawing_data = dataUrl;
+  try{ await sb.from('board_notes').update({drawing_data:dataUrl}).eq('id', id); }catch(e){}
+}
+
+function renderBoard(){
+  const wrap = document.getElementById('boardWrap');
+  if(!wrap) return;
+  if(boardDirty) return;
+  wrap.innerHTML = '';
+  boardNotes.forEach(note=>{
+    const el = document.createElement('div');
+    el.className = 'sticky-note';
+    el.style.left = note.x+'px';
+    el.style.top = note.y+'px';
+    el.style.background = note.color;
+    el.innerHTML = `
+      <div class="sticky-note-top">
+        <div class="sticky-colors">${STICKY_COLORS.map(c=>`<span style="background:${c}" onclick="setStickyColor('${note.id}','${c}')"></span>`).join('')}</div>
+        <button class="icon-btn" onclick="deleteStickyNote('${note.id}')">✕</button>
+      </div>
+      <textarea placeholder="Пиши здесь...">${note.text ? escapeHtml(note.text) : ''}</textarea>
+      <canvas width="160" height="90"></canvas>
+      <div class="sticky-note-tools"><button type="button" class="clear-draw">Стереть рисунок</button></div>
+    `;
+    wrap.appendChild(el);
+
+    // текст
+    const ta = el.querySelector('textarea');
+    ta.addEventListener('blur', ()=> saveStickyText(note.id, ta.value));
+    ta.addEventListener('mousedown', e=>e.stopPropagation());
+
+    // рисование
+    const canvas = el.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    if(note.drawing_data){
+      const img = new Image();
+      img.onload = ()=> ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = note.drawing_data;
+    }
+    let drawing = false;
+    function pos(e){
+      const r = canvas.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+      const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+      return {x: cx*(canvas.width/r.width), y: cy*(canvas.height/r.height)};
+    }
+    function startDraw(e){ e.stopPropagation(); e.preventDefault(); drawing=true; boardDirty=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.strokeStyle='#1B1F3B'; ctx.lineWidth=2; ctx.lineCap='round'; }
+    function moveDraw(e){ if(!drawing) return; e.stopPropagation(); e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+    function endDraw(e){ if(!drawing) return; drawing=false; boardDirty=false; saveStickyDrawing(note.id, canvas.toDataURL()); }
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', moveDraw);
+    window.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('touchmove', moveDraw);
+    canvas.addEventListener('touchend', endDraw);
+
+    el.querySelector('.clear-draw').addEventListener('click', e=>{
+      e.stopPropagation();
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      saveStickyDrawing(note.id, null);
+    });
+
+    // перетаскивание
+    let dragging = false, offX=0, offY=0;
+    el.addEventListener('mousedown', e=>{
+      if(e.target===ta || e.target===canvas || e.target.closest('.sticky-colors') || e.target.closest('.icon-btn') || e.target.closest('.clear-draw')) return;
+      dragging = true; boardDirty = true;
+      el.classList.add('dragging');
+      const r = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      const wr = wrap.getBoundingClientRect();
+      const nx = e.clientX - wr.left - offX + wrap.scrollLeft;
+      const ny = e.clientY - wr.top - offY + wrap.scrollTop;
+      el.style.left = Math.max(0,nx)+'px';
+      el.style.top = Math.max(0,ny)+'px';
+    });
+    window.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false; boardDirty = false;
+      el.classList.remove('dragging');
+      saveStickyPosition(note.id, parseFloat(el.style.left), parseFloat(el.style.top));
+    });
+  });
+}
+
+async function boardSyncTick(){
+  if(boardDirty) return;
+  await loadBoardNotes();
+  renderBoard();
+}
+
+async function initNotes(){
+  await loadMemos();
+  renderMemoList();
+  await loadBoardNotes();
+  renderBoard();
+  if(boardSyncTimer) clearInterval(boardSyncTimer);
+  boardSyncTimer = setInterval(boardSyncTick, 6000);
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -1754,19 +2142,22 @@ function initApp(){
   });
   document.querySelectorAll('.sup-subtab').forEach(t=>{
     t.onclick = ()=>{
-      document.querySelectorAll('.sup-subtab').forEach(x=>x.classList.remove('active'));
-      document.querySelectorAll('.sup-subpanel').forEach(x=>x.classList.remove('active'));
+      const scope = t.closest('.panel');
+      scope.querySelectorAll('.sup-subtab').forEach(x=>x.classList.remove('active'));
+      scope.querySelectorAll('.sup-subpanel').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       document.getElementById(t.dataset.sub).classList.add('active');
+      if(t.dataset.sub==='notes-board'){ renderBoard(); }
     };
   });
 
   document.getElementById('supTplInputOwn').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('own'); });
   document.getElementById('supTplInputContracted').addEventListener('keydown', e=>{ if(e.key==='Enter') addSupTplStep('contracted'); });
   document.getElementById('newSupplierName').addEventListener('keydown', e=>{ if(e.key==='Enter') createSupplier(); });
+  document.getElementById('memoItemInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addMemoItem(); });
 
-  buildDayTabs(); buildHours(); buildLegend(); buildBlockSwatches(); buildProjSwatches();
-  renderSchedule(); renderProjects(); renderWeekChart();
+  buildDayTabs(); buildHours(); buildLegend(); buildBlockSwatches();
+  renderSchedule();
   renderSupplierList();
   populateAssignDropdowns();
   renderAssignLists();
@@ -1774,9 +2165,10 @@ function initApp(){
   loadLeaderboard().then(renderLeaderboard);
   initHorseGame();
   initBlackjack();
+  initNotes();
 
   if(timerTick) clearInterval(timerTick);
-  timerTick = setInterval(()=>{ renderSchedule(); renderProjects(); }, 30000);
+  timerTick = setInterval(()=>{ renderSchedule(); }, 30000);
 }
 
 /* ============ SCHEDULE ============ */
@@ -2023,8 +2415,9 @@ async function openSupplier(id){
     document.getElementById('supplierListView').style.display = 'none';
     document.getElementById('supplierDetailView').style.display = 'block';
     document.getElementById('supDetailName').textContent = supplier.name;
-    document.querySelectorAll('.sup-subtab').forEach((x,i)=>x.classList.toggle('active', i===0));
-    document.querySelectorAll('.sup-subpanel').forEach((x,i)=>x.classList.toggle('active', i===0));
+    const supScope = document.getElementById('supplierDetailView');
+    supScope.querySelectorAll('.sup-subtab').forEach((x,i)=>x.classList.toggle('active', i===0));
+    supScope.querySelectorAll('.sup-subpanel').forEach((x,i)=>x.classList.toggle('active', i===0));
 
     renderSupTasks(); renderSupTemplates(); renderSupCars();
   }catch(e){ alert('Не удалось открыть поставщика: '+e.message); }
