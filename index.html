@@ -1852,14 +1852,19 @@ function animateBjDeal(){
 
   if(!dealer || !stage || !seats.length) return;
 
-  dealer.classList.remove('dealing');
-  void dealer.offsetWidth;
-  dealer.classList.add('dealing');
-
-  if(caption) caption.textContent = 'Дилер берёт карты и раздаёт игрокам…';
+  if(caption) caption.textContent = 'Дилер раздаёт карты…';
 
   let step = 0;
   const total = seats.length * 2;
+  const DEAL_CYCLE = 1320;
+  const CARD_LAUNCH = 640;
+
+  function resetDealerPose(){
+    dealer.classList.remove('dealing');
+    dealer.classList.remove('reaching');
+    dealer.style.setProperty('--dealer-shift', '0px');
+    void dealer.offsetWidth;
+  }
 
   function throwCard(target, n){
     const fly = document.createElement('div');
@@ -1868,8 +1873,9 @@ function animateBjDeal(){
     const sr = stage.getBoundingClientRect();
     const tr = target.getBoundingClientRect();
 
-    const startX = sr.left + sr.width / 2;
-    const startY = sr.top + Math.min(225, sr.height * .72);
+    // The card starts from the dealer's hand, not from the middle of the table.
+    const startX = sr.left + sr.width / 2 + 24;
+    const startY = sr.top + Math.min(248, sr.height * .79);
     const targetX = tr.left + tr.width / 2;
     const targetY = tr.top + 52;
 
@@ -1883,8 +1889,30 @@ function animateBjDeal(){
     stage.appendChild(fly);
     target.classList.add('deal-target');
 
-    setTimeout(() => fly.remove(), 780);
-    setTimeout(() => target.classList.remove('deal-target'), 780);
+    setTimeout(() => fly.remove(), 760);
+    setTimeout(() => target.classList.remove('deal-target'), 760);
+  }
+
+  function animateDealerForTarget(target, n){
+    const sr = stage.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const targetCenter = tr.left + tr.width / 2;
+    const stageCenter = sr.left + sr.width / 2;
+    // A small body lean follows the player, while the sprite itself performs
+    // the actual take-card / extend-arm / hand-card motion.
+    const shift = Math.max(-72, Math.min(72, (targetCenter - stageCenter) * .16));
+    dealer.style.setProperty('--dealer-shift', `${shift}px`);
+
+    resetDealerPose();
+    dealer.style.setProperty('--dealer-shift', `${shift}px`);
+    dealer.classList.add('dealing');
+    dealer.classList.add('reaching');
+
+    // Launch the card exactly while the sprite's arm is extended.
+    setTimeout(() => {
+      if(token !== bjDealAnimationToken) return;
+      throwCard(target, n);
+    }, CARD_LAUNCH);
   }
 
   function next(){
@@ -1893,28 +1921,26 @@ function animateBjDeal(){
     if(step >= total){
       setTimeout(() => {
         if(token !== bjDealAnimationToken) return;
-        dealer.classList.remove('dealing');
+        resetDealerPose();
         if(caption) caption.textContent = 'Карты розданы — ваша очередь';
         setTimeout(() => {
-          if(caption) caption.textContent = '';
+          if(token === bjDealAnimationToken && caption) caption.textContent = '';
         }, 1500);
-      }, 250);
+      }, 220);
       return;
     }
 
     // Natural blackjack order: first card to everyone, then second card to everyone.
     const playerIndex = step % seats.length;
     const target = seats[playerIndex];
-
-    throwCard(target, step);
+    animateDealerForTarget(target, step);
     step++;
 
-    setTimeout(next, 900);
+    setTimeout(next, DEAL_CYCLE);
   }
 
   next();
 }
-
 
 function bjCardHtml(card, isNew){
   const s = suitInfo(card.suit);
@@ -3028,6 +3054,81 @@ document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.ke
   @keyframes bjDealerDealFixedMobile{
     from{background-position:0 0;}
     to{background-position:-980px 0;}
+  }
+}
+</style>
+
+
+<style>
+/* BLACKJACK DEALER — cinematic handoff animation */
+.bj-dealer{
+  --dealer-shift:0px;
+  transform:translate3d(var(--dealer-shift),0,0);
+  transition:transform .30s cubic-bezier(.22,.61,.36,1);
+  will-change:transform;
+}
+.bj-dealer.reaching{
+  transform:translate3d(var(--dealer-shift),-2px,0) scale(1.015);
+}
+
+/* 8 clean frames from the supplied sprite: idle → hand forward → hand back. */
+.bj-dealer-sprite{
+  width:180px!important;
+  height:293px!important;
+  background-size:2160px 293px!important;
+  background-position:0 0!important;
+  background-repeat:no-repeat!important;
+  will-change:background-position;
+  transform:translateZ(0);
+  backface-visibility:hidden;
+}
+.bj-dealer.dealing .bj-dealer-sprite{
+  animation:bjDealerHandoff 1.12s steps(7,end) 1 both!important;
+}
+@keyframes bjDealerHandoff{
+  0%{background-position:0 0;}
+  11%{background-position:0 0;}
+  22%{background-position:-180px 0;}
+  34%{background-position:-360px 0;}
+  48%{background-position:-540px 0;}
+  61%{background-position:-720px 0;}
+  72%{background-position:-900px 0;}
+  84%{background-position:-1080px 0;}
+  100%{background-position:-1260px 0;}
+}
+
+.bj-flying-card{
+  transform-origin:50% 90%;
+}
+.bj-flying-card.go{
+  animation:bjFlyCardHandoff .72s cubic-bezier(.18,.72,.22,1) forwards!important;
+}
+@keyframes bjFlyCardHandoff{
+  0%{opacity:0;transform:translate(-50%,0) rotate(0deg) scale(.68);}
+  10%{opacity:1;}
+  25%{opacity:1;transform:translate(calc(-50% + 12px),-8px) rotate(-3deg) scale(.9);}
+  100%{opacity:1;transform:translate(calc(-50% + var(--dx)),var(--dy)) rotate(var(--rot)) scale(1);}
+}
+
+@media(max-width:700px){
+  .bj-dealer-sprite{
+    width:140px!important;
+    height:228px!important;
+    background-size:1680px 228px!important;
+  }
+  .bj-dealer.dealing .bj-dealer-sprite{
+    animation:bjDealerHandoffMobile 1.12s steps(7,end) 1 both!important;
+  }
+  @keyframes bjDealerHandoffMobile{
+    0%{background-position:0 0;}
+    11%{background-position:0 0;}
+    22%{background-position:-140px 0;}
+    34%{background-position:-280px 0;}
+    48%{background-position:-420px 0;}
+    61%{background-position:-560px 0;}
+    72%{background-position:-700px 0;}
+    84%{background-position:-840px 0;}
+    100%{background-position:-980px 0;}
   }
 }
 </style>
