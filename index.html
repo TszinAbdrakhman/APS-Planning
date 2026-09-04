@@ -347,6 +347,13 @@
     35%{box-shadow:0 0 0 5px rgba(232,163,61,.45);}
     100%{box-shadow:0 0 0 0 rgba(232,163,61,0);}
   }
+  .bj-split-hand{display:flex;gap:10px;align-items:flex-start;justify-content:center;width:100%;}
+  .bj-hand-part{display:flex;gap:5px;align-items:center;position:relative;padding-top:12px;}
+  .bj-hand-part.active{filter:drop-shadow(0 0 5px rgba(232,163,61,.65));}
+  .bj-hand-label{position:absolute;top:0;left:50%;transform:translateX(-50%);font-size:9px;color:rgba(255,255,255,.5);white-space:nowrap;}
+  .bj-table.bj-dealing .bj-dealer-zone .bj-hand .card-chip,.bj-table.bj-dealing #bjSeatsGrid .bj-hand .card-chip{visibility:hidden;}
+  .bj-flying-card{transform-origin:center bottom;}
+
   @media (max-width:700px){
     .bj-dealer-zone{min-height:285px; overflow:visible;}
     .bj-dealer-stage{height:245px;}
@@ -586,7 +593,7 @@
           <div>Твой баланс: <span class="mono horse-balance" id="bjBalanceLabel">$0</span></div>
           <div class="horse-status-label" id="bjStatusLabel"></div>
         </div>
-        <div class="bj-rules">Ставка от $100 до $10 000. Победа — забираешь ×2 от ставки. Блэкджек (21 с первых двух карт) — ×2.5. Ничья с дилером — ставка просто возвращается. Проигрыш или перебор (>21) — ставка сгорает.</div>
+        <div class="bj-rules">Ставка от $100 до $10 000. Победа — забираешь ×2 от ставки. Блэкджек (21 с первых двух карт) — ×2.5. Сплит доступен для пары одинаковых карт и требует второй такой же ставки. После сплита каждая рука рассчитывается отдельно. Ничья с дилером — ставка просто возвращается. Проигрыш или перебор (>21) — ставка сгорает.</div>
       </div>
       <div class="bj-table">
         <div class="bj-dealer-zone">
@@ -1211,7 +1218,7 @@ const HORSE_RANKS = ['6','7','8','9','10','J','Q','K','A'];
 function buildShuffledDeck(){
   const deck = [];
   SUITS.forEach(s=>{ HORSE_RANKS.forEach(r=> deck.push({suit:s.key, rank:r})); });
-  return shuffleArray(deck);
+  return cryptoShuffle(deck);
 }
 function simulateRace(){
   const deck = buildShuffledDeck();
@@ -1584,10 +1591,33 @@ let bjSyncTimer = null;
 let bjHistory = [];
 let bjFinishedShownUntil = 0;
 
-function buildBjDeck(){
+function cryptoRandomInt(max){
+  if(max<=1) return 0;
+  const range = 0x100000000;
+  const limit = range - (range % max);
+  const buf = new Uint32Array(1);
+  let x;
+  do { crypto.getRandomValues(buf); x = buf[0]; } while(x >= limit);
+  return x % max;
+}
+
+function cryptoShuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = cryptoRandomInt(i+1);
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function buildBjDeck(playerCount){
+  // Blackjack shoe: 1 player = 2 decks, 2 players = 3 decks, etc.
+  const deckCount = Math.max(2, Math.min(8, Number(playerCount||1)+1));
   const deck = [];
-  SUITS.forEach(s=>{ BJ_RANKS.forEach(rk=> deck.push({suit:s.key, rank:rk.r, value:rk.v})); });
-  return shuffleArray(deck);
+  for(let d=0; d<deckCount; d++){
+    SUITS.forEach(s=>{ BJ_RANKS.forEach(rk=>deck.push({suit:s.key, rank:rk.r, value:rk.v, deck:d+1})); });
+  }
+  return cryptoShuffle(deck);
 }
 function handValue(cards){
   let total = 0, aces = 0;
@@ -1686,98 +1716,147 @@ async function startBjRound(){
   if(!bjRound || bjRound.status!=='open') return;
   const bettors = bjSeats.filter(s=>s.bet).sort((a,b)=>a.seat_no-b.seat_no);
   if(bettors.length===0){ alert('Хотя бы один игрок должен сначала поставить ставку'); return; }
-  const deck = buildBjDeck();
+
+  const deckCount = Math.max(2, Math.min(8, bettors.length + 1));
+  const deck = buildBjDeck(bettors.length);
   const dealerCards = [deck.pop(), deck.pop()];
   const dealt = bettors.map(s=>{
     const cards = [deck.pop(), deck.pop()];
-    return {id:s.id, seat_no:s.seat_no, cards, status: isBjBlackjack(cards) ? 'blackjack' : 'active'};
+    return {id:s.id, seat_no:s.seat_no, cards, status:isBjBlackjack(cards)?'blackjack':'active'};
   });
   const firstActive = dealt.find(s=>s.status==='active');
+
   try{
     const {data} = await sb.from('blackjack_rounds')
-      .update({status:'playing', deck, dealer_cards:dealerCards, started_at:new Date().toISOString(), current_turn_seat: firstActive ? firstActive.seat_no : null})
-      .eq('id', bjRound.id).eq('status','open').select().maybeSingle();
+      .update({status:'playing', deck, deck_count:deckCount, dealer_cards:dealerCards, started_at:new Date().toISOString(), current_turn_seat:firstActive?firstActive.seat_no:null})
+      .eq('id',bjRound.id).eq('status','open').select().maybeSingle();
     if(!data){ await loadBjRound(); await loadBjSeats(); renderBlackjack(); return; }
-    bjRound = data;
-    for(const u of dealt){ await sb.from('blackjack_seats').update({cards:u.cards, status:u.status}).eq('id', u.id); }
-    for(const s of bjSeats.filter(s=>!s.bet)){ await sb.from('blackjack_seats').delete().eq('id', s.id); }
+    bjRound=data;
+    for(const u of dealt){
+      await sb.from('blackjack_seats').update({cards:u.cards,status:u.status,active_hand:1,split_cards:null,split_status:null,split_result:null,split_payout:0}).eq('id',u.id);
+    }
+    for(const s of bjSeats.filter(s=>!s.bet)){ await sb.from('blackjack_seats').delete().eq('id',s.id); }
     await loadBjSeats();
-    if(!firstActive){ await resolveDealerAndFinish(); }
+    if(!firstActive) await resolveDealerAndFinish();
     renderBlackjack();
   }catch(e){ alert('Не удалось начать раунд: '+e.message); }
 }
 
-async function bjHit(){
-  const seat = getMySeat();
+async function bjSplit(){
+  const seat=getMySeat();
   if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || seat.status!=='active') return;
-  const deck = [...bjRound.deck];
-  const card = deck.pop();
-  const newCards = [...seat.cards, card];
-  const val = handValue(newCards);
-  const newStatus = val>21 ? 'bust' : (val===21 ? 'stood' : 'active');
+  if((seat.split_cards||[]).length) return;
+  if(!seat.cards || seat.cards.length!==2 || seat.cards[0].rank!==seat.cards[1].rank){ alert('Сплит доступен только для пары одинакового достоинства'); return; }
+  if(horseBalance < Number(seat.bet||0)){ alert('Для сплита нужна ещё одна ставка такого же размера'); return; }
+
+  const deck=[...bjRound.deck];
+  const secondCard=seat.cards[1];
+  const firstNew=deck.pop();
+  const secondNew=deck.pop();
+  const hand1=[seat.cards[0],firstNew];
+  const hand2=[secondCard,secondNew];
+  const status1=handValue(hand1)>21?'bust':(handValue(hand1)===21?'stood':'active');
+  const status2=handValue(hand2)>21?'bust':(handValue(hand2)===21?'stood':'active');
   try{
-    await sb.from('blackjack_seats').update({cards:newCards, status:newStatus}).eq('id', seat.id);
-    await sb.from('blackjack_rounds').update({deck}).eq('id', bjRound.id);
-    bjRound.deck = deck;
+    const newBal=horseBalance-Number(seat.bet);
+    await sb.from('horse_balances').update({balance:newBal}).eq('user_id',currentUser.id);
+    horseBalance=newBal;
+    const {error}=await sb.from('blackjack_seats').update({cards:hand1,split_cards:hand2,status:status1,split_status:status2,active_hand:1,split_result:null,split_payout:0}).eq('id',seat.id);
+    if(error) throw error;
+    await sb.from('blackjack_rounds').update({deck}).eq('id',bjRound.id);
+    bjRound.deck=deck;
     await loadBjSeats();
-    if(newStatus!=='active'){ await advanceBjTurn(); } else { renderBlackjack(); }
+    if(status1!=='active') await advanceBjTurn(); else renderBlackjack();
+  }catch(e){ alert('Не удалось сделать сплит: '+e.message); }
+}
+
+function bjActiveCards(seat){ return Number(seat.active_hand||1)===2 ? (seat.split_cards||[]) : (seat.cards||[]); }
+function bjActiveStatus(seat){ return Number(seat.active_hand||1)===2 ? (seat.split_status||'active') : seat.status; }
+
+async function bjHit(){
+  const seat=getMySeat();
+  if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || bjActiveStatus(seat)!=='active') return;
+  const deck=[...bjRound.deck];
+  const card=deck.pop();
+  const activeHand=Number(seat.active_hand||1);
+  const cards=[...bjActiveCards(seat),card];
+  const val=handValue(cards);
+  const newStatus=val>21?'bust':(val===21?'stood':'active');
+  const update=activeHand===2 ? {split_cards:cards,split_status:newStatus} : {cards,status:newStatus};
+  try{
+    const {error}=await sb.from('blackjack_seats').update(update).eq('id',seat.id);
+    if(error) throw error;
+    await sb.from('blackjack_rounds').update({deck}).eq('id',bjRound.id);
+    bjRound.deck=deck;
+    await loadBjSeats();
+    if(newStatus!=='active') await advanceBjTurn(); else renderBlackjack();
   }catch(e){ alert('Ошибка: '+e.message); }
 }
+
 async function bjStand(){
-  const seat = getMySeat();
-  if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || seat.status!=='active') return;
+  const seat=getMySeat();
+  if(!seat || !bjRound || bjRound.status!=='playing' || bjRound.current_turn_seat!==seat.seat_no || bjActiveStatus(seat)!=='active') return;
+  const activeHand=Number(seat.active_hand||1);
   try{
-    await sb.from('blackjack_seats').update({status:'stood'}).eq('id', seat.id);
+    const update=activeHand===2 ? {split_status:'stood'} : {status:'stood'};
+    await sb.from('blackjack_seats').update(update).eq('id',seat.id);
     await loadBjSeats();
     await advanceBjTurn();
   }catch(e){ alert('Ошибка: '+e.message); }
 }
+
 async function advanceBjTurn(){
-  const actable = bjSeats.filter(s=>s.status==='active' && s.seat_no > (bjRound.current_turn_seat||0)).sort((a,b)=>a.seat_no-b.seat_no);
+  const currentSeat=Number(bjRound.current_turn_seat||0);
+  const current=bjSeats.find(s=>s.seat_no===currentSeat);
+  if(current){
+    // A split player gets a complete turn on hand #2 before the table moves on.
+    if((current.split_cards||[]).length && Number(current.active_hand||1)===1 && current.split_status==='active'){
+      await sb.from('blackjack_rounds').update({current_turn_seat:currentSeat}).eq('id',bjRound.id).eq('status','playing');
+      await sb.from('blackjack_seats').update({active_hand:2}).eq('id',current.id);
+      await loadBjSeats();
+      renderBlackjack();
+      return;
+    }
+  }
+  const actable=bjSeats.filter(s=>s.status==='active' && s.seat_no>currentSeat).sort((a,b)=>a.seat_no-b.seat_no);
   if(actable.length>0){
-    await sb.from('blackjack_rounds').update({current_turn_seat: actable[0].seat_no}).eq('id', bjRound.id).eq('status','playing');
-    await loadBjRound();
-    renderBlackjack();
-  } else {
+    await sb.from('blackjack_rounds').update({current_turn_seat:actable[0].seat_no}).eq('id',bjRound.id).eq('status','playing');
+    await loadBjRound(); renderBlackjack();
+  }else{
     await resolveDealerAndFinish();
   }
 }
+
 async function resolveDealerAndFinish(){
-  let deck = [...bjRound.deck];
-  let dealerCards = [...bjRound.dealer_cards];
-  const anyoneLeft = bjSeats.some(s=>s.status==='active' || s.status==='blackjack' || s.status==='stood');
-  if(anyoneLeft){
-    while(handValue(dealerCards) < 17){ dealerCards.push(deck.pop()); }
-  }
-  const dealerVal = handValue(dealerCards);
-  const dealerBust = dealerVal > 21;
+  let deck=[...bjRound.deck];
+  let dealerCards=[...bjRound.dealer_cards];
+  const anyoneLeft=bjSeats.some(s=>s.status==='active'||s.status==='blackjack'||s.status==='stood'||s.split_status==='active'||s.split_status==='stood');
+  if(anyoneLeft){ while(handValue(dealerCards)<17){ dealerCards.push(deck.pop()); } }
+  const dealerVal=handValue(dealerCards);
+  const dealerBust=dealerVal>21;
+
   for(const s of bjSeats){
-    if(s.status==='bust'){ await sb.from('blackjack_seats').update({result:'lose', payout:0}).eq('id', s.id); continue; }
-    if(s.status==='blackjack'){
-      const payout = +(s.bet*2.5).toFixed(2);
-      await creditBalance(s.user_id, payout);
-      await sb.from('blackjack_seats').update({result:'blackjack', payout}).eq('id', s.id);
-      continue;
+    const hands=[{cards:s.cards||[],status:s.status||'active',hand:1},{cards:s.split_cards||[],status:s.split_status,hand:2}].filter(h=>h.hand===1 || h.cards.length);
+    let totalPayout=0, primaryResult=s.result||null, primaryPayout=0, splitResult=null, splitPayout=0;
+    for(const h of hands){
+      let result='lose',payout=0;
+      const val=handValue(h.cards);
+      if(h.status==='bust'){ result='lose'; }
+      else if(h.status==='blackjack'){ result='blackjack'; payout=+(s.bet*2.5).toFixed(2); }
+      else if(dealerBust || val>dealerVal){ result='win'; payout=+(s.bet*2).toFixed(2); }
+      else if(val===dealerVal){ result='push'; payout=s.bet; }
+      if(payout>0) await creditBalance(s.user_id,payout);
+      totalPayout+=payout;
+      if(h.hand===1){ primaryResult=result; primaryPayout=payout; }
+      else { splitResult=result; splitPayout=payout; }
     }
-    const val = handValue(s.cards);
-    let result, payout;
-    if(dealerBust || val>dealerVal){ result='win'; payout=+(s.bet*2).toFixed(2); }
-    else if(val===dealerVal){ result='push'; payout=s.bet; }
-    else { result='lose'; payout=0; }
-    if(payout>0) await creditBalance(s.user_id, payout);
-    await sb.from('blackjack_seats').update({result, payout}).eq('id', s.id);
+    await sb.from('blackjack_seats').update({result:primaryResult,payout:primaryPayout,split_result:splitResult,split_payout:splitPayout,active_hand:1}).eq('id',s.id);
   }
-  const {data} = await sb.from('blackjack_rounds')
-    .update({status:'finished', dealer_cards:dealerCards, deck, finished_at:new Date().toISOString()})
-    .eq('id', bjRound.id).eq('status','playing').select().maybeSingle();
-  if(data) {
-    bjRound = data;
-    bjFinishedShownUntil = Date.now() + 12000;
-  }
-  await loadBjSeats();
-  await loadBjHistory();
-  renderBlackjack();
+  const {data}=await sb.from('blackjack_rounds').update({status:'finished',dealer_cards:dealerCards,deck,finished_at:new Date().toISOString()}).eq('id',bjRound.id).eq('status','playing').select().maybeSingle();
+  if(data){ bjRound=data; bjFinishedShownUntil=Date.now()+12000; }
+  await loadBjSeats(); await loadBjHistory(); renderBlackjack();
 }
+
 
 async function bjSyncTick(){
   try{
@@ -1855,6 +1934,8 @@ function animateBjDeal(){
   const caption = document.getElementById('bjDealCaption');
   if(!dealer || !sprite || !zone || !stage || !deck || !seats.length) return;
 
+  const bjTable = document.querySelector('.bj-table');
+  bjTable?.classList.add('bj-dealing');
   setBjDealerFrame(0);
   if(caption) caption.textContent = 'Дилер берёт карты и раздаёт игрокам…';
 
@@ -1914,7 +1995,7 @@ function animateBjDeal(){
     const targetY = tr.top - zr.top + Math.min(26, tr.height / 2);
     target.classList.add('deal-target');
 
-    fly.style.transition = 'transform 720ms cubic-bezier(.16,.74,.24,1), opacity 160ms ease';
+    fly.style.transition = 'transform 720ms cubic-bezier(.18,.78,.22,1), opacity 160ms ease';
     fly.style.transform = `translate(${targetX}px,${targetY}px) translate(-50%,-50%) rotate(${n % 2 ? 6 : -5}deg) scale(1)`;
     await wait(620);
     if(token !== bjDealAnimationToken){ fly.remove(); target.classList.remove('deal-target'); return false; }
@@ -1944,6 +2025,8 @@ function animateBjDeal(){
     if(token !== bjDealAnimationToken) return;
     clearBjDealerFrameTimer();
     setBjDealerFrame(0);
+    bjTable?.classList.remove('bj-dealing');
+    renderBlackjack();
     if(caption) caption.textContent = 'Карты розданы — ваша очередь';
     setTimeout(()=>{
       if(token===bjDealAnimationToken && caption) caption.textContent='';
@@ -1968,8 +2051,9 @@ function renderBlackjack(){
   const isNewRound = bjRound.id !== bjLastRoundId;
   if(isNewRound){ bjPrevCounts = {}; bjLastRoundId = bjRound.id; }
 
+  const shoeCount = bjRound.deck_count || (bjRound.deck ? Math.max(1, Math.round((bjRound.deck.length + (bjRound.dealer_cards?.length||0) + bjSeats.reduce((n,s)=>(n+(s.cards?.length||0)+(s.split_cards?.length||0)),0))/52)) : '—');
   statusEl.textContent = bjRound.status==='open' ? 'Стол открыт — садись и делай ставку'
-    : bjRound.status==='playing' ? '🃏 Раунд идёт'
+    : bjRound.status==='playing' ? `🃏 Раунд идёт · колода ${shoeCount}+`
     : '✅ Раунд завершён — скоро новый стол';
 
   const dealerCards = bjRound.dealer_cards || [];
@@ -2001,36 +2085,48 @@ function renderBlackjack(){
     const seatKey = 'seat_'+seat.id;
     const seatPrev = bjPrevCounts[seatKey] || 0;
     const cards = seat.cards || [];
-    const cardsHtml = cards.map((c,i)=>bjCardHtml(c, i>=seatPrev)).join('');
-    bjPrevCounts[seatKey] = bjRound.status==='open' ? 0 : cards.length;
+    const splitCards = seat.split_cards || [];
+    const isSplit = splitCards.length>0;
+    const activeHand = Number(seat.active_hand||1);
+    const cardsHtml = cards.map((c,i)=>bjCardHtml(c,i>=seatPrev)).join('');
+    const splitHtml = isSplit ? splitCards.map((c)=>bjCardHtml(c,false)).join('') : '';
+    bjPrevCounts[seatKey] = bjRound.status==='open' ? 0 : cards.length + splitCards.length;
 
-    let footer = '';
+    let footer='';
     if(bjRound.status==='open'){
       if(!seat.bet){
-        footer = isMine
-          ? `<div class="form-row"><input type="number" id="bjBetAmount" min="100" max="10000" step="100" value="100" style="width:90px;"><button onclick="placeBjBet()">Ставка</button></div><button class="ghost" onclick="leaveSeat()">Встать</button>`
-          : `<span class="seat-label">Ставка не сделана</span>`;
-      } else {
-        footer = `<span class="seat-label">Ставка: ${fmtMoney(seat.bet)}</span>` + (isMine ? `<button class="ghost" onclick="leaveSeat()">Встать</button>` : '');
+        footer=isMine ? `<div class="form-row"><input type="number" id="bjBetAmount" min="100" max="10000" step="100" value="100" style="width:90px;"><button onclick="placeBjBet()">Ставка</button></div><button class="ghost" onclick="leaveSeat()">Встать</button>` : `<span class="seat-label">Ставка не сделана</span>`;
+      }else{ footer=`<span class="seat-label">Ставка: ${fmtMoney(seat.bet)}</span>`+(isMine?`<button class="ghost" onclick="leaveSeat()">Встать</button>`:''); }
+    }else if(bjRound.status==='playing'){
+      const totalPoints = isSplit ? `${handValue(cards)} / ${handValue(splitCards)}` : `${handValue(cards)}`;
+      footer = `<span class="bj-points">${totalPoints} очков</span>`;
+      if(isTurn && isMine){
+        const canSplit = !isSplit && cards.length===2 && cards[0].rank===cards[1].rank && horseBalance>=Number(seat.bet||0);
+        footer += `<div class="form-row" style="margin-top:6px;"><button onclick="bjHit()">Ещё</button><button class="ghost" onclick="bjStand()">Хватит</button>${canSplit?`<button class="ghost" onclick="bjSplit()">Сплит</button>`:''}</div>`;
       }
-    } else if(bjRound.status==='playing'){
-      footer = `<span class="bj-points">${handValue(cards)} очков</span>`;
-      if(isTurn && isMine && seat.status==='active'){
-        footer += `<div class="form-row" style="margin-top:6px;"><button onclick="bjHit()">Ещё</button><button class="ghost" onclick="bjStand()">Хватит</button></div>`;
-      } else if(seat.status==='bust'){ footer += `<div class="bj-outcome lose">Перебор</div>`; }
-      else if(seat.status==='blackjack'){ footer += `<div class="bj-outcome win">Блэкджек!</div>`; }
-      else if(seat.status==='stood'){ footer += `<div class="seat-label">Хватит, ждёт результата</div>`; }
-      else if(seat.status==='active'){ footer += `<div class="seat-label">Ждёт хода...</div>`; }
-    } else {
-      footer = `<span class="bj-points">${handValue(cards)} очков · ставка ${fmtMoney(seat.bet)}</span>`;
-      if(seat.result==='win') footer += `<div class="bj-outcome win">Победа! +${fmtMoney(seat.payout - seat.bet)} (получено ${fmtMoney(seat.payout)})</div>`;
-      else if(seat.result==='blackjack') footer += `<div class="bj-outcome win">Блэкджек! +${fmtMoney(seat.payout - seat.bet)} (получено ${fmtMoney(seat.payout)})</div>`;
-      else if(seat.result==='push') footer += `<div class="bj-outcome push">Ничья — ставка возвращена (${fmtMoney(seat.payout)})</div>`;
-      else footer += `<div class="bj-outcome lose">Проигрыш −${fmtMoney(seat.bet)}</div>`;
+      if(seat.status==='bust') footer += `<div class="bj-outcome lose">${isSplit?'1-я рука: ':''}Перебор</div>`;
+      else if(seat.status==='blackjack') footer += `<div class="bj-outcome win">Блэкджек!</div>`;
+      else if(seat.status==='stood' && !isSplit) footer += `<div class="seat-label">Хватит, ждёт результата</div>`;
+      if(isSplit && seat.split_status==='bust') footer += `<div class="bj-outcome lose">2-я рука: Перебор</div>`;
+      else if(isSplit && seat.split_status==='stood') footer += `<div class="seat-label">2-я рука: Хватит</div>`;
+      else if(seat.status==='active' && !isTurn) footer += `<div class="seat-label">Ждёт хода...</div>`;
+    }else{
+      footer = `<span class="bj-points">${isSplit?`${handValue(cards)} / ${handValue(splitCards)}`:handValue(cards)} очков · ставка ${fmtMoney(seat.bet)}${isSplit?' + ещё '+fmtMoney(seat.bet):''}</span>`;
+      const resultText=(result,payout,bet)=>{
+        if(result==='win') return `<span class="bj-outcome win">Победа +${fmtMoney((payout||0)-bet)}</span>`;
+        if(result==='blackjack') return `<span class="bj-outcome win">Блэкджек +${fmtMoney((payout||0)-bet)}</span>`;
+        if(result==='push') return `<span class="bj-outcome push">Ничья +$0</span>`;
+        return `<span class="bj-outcome lose">Проигрыш −${fmtMoney(bet)}</span>`;
+      };
+      footer += resultText(seat.result,seat.payout,seat.bet);
+      if(isSplit) footer += `<div style="margin-top:4px;">${resultText(seat.split_result,seat.split_payout,seat.bet)}</div>`;
     }
     seatsHtml += `<div class="bj-seat ${isMine?'mine':''} ${isTurn?'turn':''}">
       <div class="seat-label">Место ${n} · ${escapeHtml(usernameById(seat.user_id))}${isMine?' (ты)':''}</div>
-      <div class="bj-hand">${cardsHtml}</div>
+      <div class="bj-hand ${isSplit?'bj-split-hand':''}">
+        <div class="bj-hand-part ${activeHand===1?'active':''}"><span class="bj-hand-label">${isSplit?'1-я рука':''}</span>${cardsHtml}</div>
+        ${isSplit?`<div class="bj-hand-part ${activeHand===2?'active':''}"><span class="bj-hand-label">2-я рука</span>${splitHtml}</div>`:''}
+      </div>
       ${footer}
     </div>`;
   }
@@ -2052,6 +2148,7 @@ function renderBlackjack(){
       const players=(r.seats||[]).map(seat=>{
         const mine=seat.user_id===currentUser.id;
         const cards=(seat.cards||[]).map(c=>bjCardHtml(c,false)).join('');
+        const splitCards=(seat.split_cards||[]).map(c=>bjCardHtml(c,false)).join('');
         let result='';
         if(seat.result==='win') result=`<span class="bj-outcome win">Победа +${fmtMoney((seat.payout||0)-(seat.bet||0))}</span>`;
         else if(seat.result==='blackjack') result=`<span class="bj-outcome win">Блэкджек +${fmtMoney((seat.payout||0)-(seat.bet||0))}</span>`;
@@ -2059,8 +2156,11 @@ function renderBlackjack(){
         else result=`<span class="bj-outcome lose">Проигрыш −${fmtMoney(seat.bet||0)}</span>`;
         return `<div class="bj-history-player ${mine?'mine':''}">
           <div class="seat-label">${mine?'👤 ':''}Игрок ${seat.seat_no} · ${escapeHtml(usernameById(seat.user_id))}</div>
-          <div class="bj-hand">${cards}<span class="bj-points">${handValue(seat.cards||[])} очков</span></div>
-          <div class="bj-history-result">${result}</div>
+          <div class="bj-hand ${splitCards?'bj-split-hand':''}">
+            <div class="bj-hand-part"><span class="bj-hand-label">${splitCards?'1-я рука':''}</span>${cards}<span class="bj-points">${handValue(seat.cards||[])} очков</span></div>
+            ${splitCards?`<div class="bj-hand-part"><span class="bj-hand-label">2-я рука</span>${splitCards}<span class="bj-points">${handValue(seat.split_cards||[])} очков</span></div>`:''}
+          </div>
+          <div class="bj-history-result">${result}${seat.split_result?`<div style="margin-top:4px;">${seat.split_result==='win'?`<span class="bj-outcome win">2-я рука: Победа +${fmtMoney((seat.split_payout||0)-(seat.bet||0))}</span>`:seat.split_result==='blackjack'?`<span class="bj-outcome win">2-я рука: Блэкджек +${fmtMoney((seat.split_payout||0)-(seat.bet||0))}</span>`:seat.split_result==='push'?`<span class="bj-outcome push">2-я рука: Ничья +$0</span>`:`<span class="bj-outcome lose">2-я рука: Проигрыш −${fmtMoney(seat.bet||0)}</span>`}</div>`:''}</div>
         </div>`;
       }).join('');
       return `<div class="bj-history-round">
