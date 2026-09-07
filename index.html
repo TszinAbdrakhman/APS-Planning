@@ -1175,6 +1175,7 @@ const RACE_INTERVAL_MS = 10 * 60000;
 
 let horseBalance = 0;
 let currentRace = null;
+let horseTrackBuiltKey = null;
 let myBets = [];
 let allRaceBets = [];
 let horseStats = {};
@@ -1456,25 +1457,50 @@ function renderHorseGame(){
   const isRunning = currentRace.status==='running';
   const leaderKey = isRunning ? SUITS.reduce((a,b)=> positions[a.key]>=positions[b.key] ? a : b).key : null;
 
-  trackEl.innerHTML = `<div class="horse-finish-flash" id="horseFinishFlash"></div>` + SUITS.map(s=>{
-    const steps = positions[s.key];
-    const pct = (steps/FINISH_STEPS)*100;
-    const oddsOrSteps = currentRace.status==='betting'
-      ? `x${currentOdds(s.key).toFixed(2)}`
-      : `${steps}/${FINISH_STEPS}`;
-    const leading = isRunning && s.key===leaderKey && steps>0;
-    return `<div class="horse-lane ${leading?'leading':''}">
-      <div class="suit-tag" style="color:${s.color}">${s.symbol} ${s.name}</div>
-      <div class="lane-track">
-        ${[20,40,60,80].map(p=>`<div class="lane-divider" style="left:${p}%"></div>`).join('')}
-        <div class="lane-fill" style="width:${pct}%; background:${s.color}33;"></div>
-        <div class="lane-dust" style="left:${Math.max(0,pct-6)}%; background:${s.color}22;"></div>
-        <div class="lane-finish"></div>
-        <div class="lane-horse" style="left:${pct}%"><span class="emoji">🐎</span></div>
-      </div>
-      <div class="odds-tag">${oddsOrSteps}</div>
-    </div>`;
-  }).join('');
+  // Дорожки пересоздаются только когда реально сменился раунд/фаза (betting -> running -> finished).
+  // Внутри одной фазы мы просто обновляем width/left на тех же DOM-узлах — иначе CSS transition
+  // не от чего анимировать (новый узел рождается уже в конечном положении, отсюда рывки).
+  const buildKey = currentRace.id + ':' + currentRace.status;
+  if(horseTrackBuiltKey !== buildKey){
+    trackEl.innerHTML = `<div class="horse-finish-flash" id="horseFinishFlash"></div>` + SUITS.map(s=>{
+      const steps = positions[s.key];
+      const pct = (steps/FINISH_STEPS)*100;
+      const oddsOrSteps = currentRace.status==='betting'
+        ? `x${currentOdds(s.key).toFixed(2)}`
+        : `${steps}/${FINISH_STEPS}`;
+      const leading = isRunning && s.key===leaderKey && steps>0;
+      return `<div class="horse-lane ${leading?'leading':''}" data-suit="${s.key}">
+        <div class="suit-tag" style="color:${s.color}">${s.symbol} ${s.name}</div>
+        <div class="lane-track">
+          ${[20,40,60,80].map(p=>`<div class="lane-divider" style="left:${p}%"></div>`).join('')}
+          <div class="lane-fill" style="width:${pct}%; background:${s.color}33;"></div>
+          <div class="lane-dust" style="left:${Math.max(0,pct-6)}%; background:${s.color}22;"></div>
+          <div class="lane-finish"></div>
+          <div class="lane-horse" style="left:${pct}%"><span class="emoji">🐎</span></div>
+        </div>
+        <div class="odds-tag">${oddsOrSteps}</div>
+      </div>`;
+    }).join('');
+    horseTrackBuiltKey = buildKey;
+  } else {
+    SUITS.forEach(s=>{
+      const laneEl = trackEl.querySelector(`.horse-lane[data-suit="${s.key}"]`);
+      if(!laneEl) return;
+      const steps = positions[s.key];
+      const pct = (steps/FINISH_STEPS)*100;
+      laneEl.classList.toggle('leading', isRunning && s.key===leaderKey && steps>0);
+      const fillEl = laneEl.querySelector('.lane-fill');
+      const dustEl = laneEl.querySelector('.lane-dust');
+      const horseEl = laneEl.querySelector('.lane-horse');
+      const oddsEl = laneEl.querySelector('.odds-tag');
+      if(fillEl) fillEl.style.width = pct+'%';
+      if(dustEl) dustEl.style.left = Math.max(0,pct-6)+'%';
+      if(horseEl) horseEl.style.left = pct+'%';
+      if(oddsEl) oddsEl.textContent = currentRace.status==='betting'
+        ? `x${currentOdds(s.key).toFixed(2)}`
+        : `${steps}/${FINISH_STEPS}`;
+    });
+  }
 
   // Разовые эффекты в момент завершения гонки: вспышка цветом победителя, тряска, конфетти.
   if(!window.__horseLastStatus) window.__horseLastStatus = {};
@@ -1732,7 +1758,7 @@ async function startBjRound(){
 
 function canSplit(seat){
   return !!seat && seat.status==='active' && !seat.split && (seat.cards||[]).length===2
-    && seat.cards[0].value===seat.cards[1].value;
+    && seat.cards[0].rank===seat.cards[1].rank;
 }
 
 async function bjSplit(){
