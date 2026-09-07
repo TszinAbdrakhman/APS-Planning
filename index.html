@@ -492,7 +492,7 @@
     <button class="tab" data-tab="assign">Назначения <span class="count" id="assignCount" style="display:none;"></span></button>
     <button class="tab" data-tab="schedule">Расписание</button>
     <button class="tab" data-tab="notes">Заметки 📝</button>
-    <button class="tab" data-tab="game">Игра 🎲</button>
+    <button class="tab" data-tab="hangman">Виселица 🎯</button>
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
   </div>
@@ -502,7 +502,7 @@
 
   <div id="content" style="display:none;">
 
-    <div class="panel" id="panel-game">
+    <div class="panel" id="panel-hangman">
       <div class="card game-card">
         <div class="game-top">
           <div class="game-theme" id="gameTheme"></div>
@@ -1055,24 +1055,34 @@ const WORD_BANK = [
 ];
 const RU_ALPHABET = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('');
 const MAX_WRONG = 6;
-let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0, winRecorded = false;
-let leaderboard = [];
-let wordBag = [];
-
 function shuffleArray(arr){
   for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
   return arr;
 }
-function refillWordBag(excludeWord){
-  const bag = shuffleArray([...WORD_BANK]);
-  if(excludeWord && bag.length>1 && bag[0].word===excludeWord){
-    [bag[0], bag[1]] = [bag[1], bag[0]];
+let gameWord = '', gameCategory = '', guessedSet = new Set(), wrongCount = 0, winRecorded = false;
+let leaderboard = [];
+let hangmanUsedWords = new Set();
+
+async function loadHangmanUsedWords(){
+  try{
+    const {data, error} = await sb.from('hangman_used_words').select('word');
+    if(error) throw error;
+    hangmanUsedWords = new Set((data||[]).map(r=>r.word));
+  }catch(e){
+    console.error('Не удалось загрузить список угаданных слов:', e.message);
+    hangmanUsedWords = new Set();
   }
-  wordBag = bag;
 }
-function newGame(){
-  if(wordBag.length===0) refillWordBag(gameWord);
-  const entry = wordBag.pop();
+
+async function newGame(){
+  await loadHangmanUsedWords();
+  // Общий пул: слова, которые кто-либо уже угадал, больше никому не попадаются.
+  let available = WORD_BANK.filter(w => !hangmanUsedWords.has(w.word));
+  if(available.length === 0){
+    // Весь банк слов уже угадан всеми игроками — начинаем круг заново.
+    available = WORD_BANK;
+  }
+  const entry = available[Math.floor(Math.random()*available.length)];
   gameWord = entry.word;
   gameCategory = entry.category;
   guessedSet = new Set();
@@ -1116,6 +1126,12 @@ function renderGame(){
 }
 async function recordWin(){
   try{
+    // Слово теперь общее на всех: как только кто-то его угадал, оно больше никому не попадётся.
+    const { error: wordErr } = await sb.from('hangman_used_words')
+      .upsert({ word: gameWord, used_by: currentUser.id }, { onConflict: 'word', ignoreDuplicates: true });
+    if(wordErr) console.error('Не удалось пометить слово как угаданное:', wordErr.message);
+    hangmanUsedWords.add(gameWord);
+
     // 1 победа в «Виселице» = +1 очко = +$100 в общем балансе «Скачек».
     const {data: existing} = await sb.from('game_scores')
       .select('wins')
