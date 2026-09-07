@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{
     --ink:#1B1F3B; --paper:#EDEEF0; --card:#FFFFFF;
@@ -344,6 +346,34 @@
   }
 
 
+  /* ---- DISTANCE GAME ---- */
+  .dg-rules{font-size:12.5px; color:var(--muted); line-height:1.6;}
+  .dg-layout{display:grid; grid-template-columns:1fr 260px; gap:16px; align-items:start;}
+  @media (max-width:860px){ .dg-layout{grid-template-columns:1fr;} }
+  .dg-question{font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:600; margin:8px 0 12px;}
+  .dg-map{width:100%; height:320px; border-radius:10px; overflow:hidden; border:1px solid var(--line); margin-bottom:14px; background:#dfe3e6;}
+  .dg-answer-zone{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .dg-answer-zone input{flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--line); border-radius:7px; font-family:'IBM Plex Mono',monospace; font-size:14px;}
+  .dg-answer-zone .dg-hint{width:100%; font-size:11.5px; color:var(--muted); margin-top:4px;}
+  .dg-countdown{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--muted);}
+  .dg-submitted{font-size:13px; color:var(--sage); font-weight:600; padding:8px 0;}
+  .dg-results{margin-top:14px;}
+  .dg-results .dg-actual{font-size:13.5px; margin-bottom:10px;}
+  .dg-results .dg-actual b{color:var(--ink);}
+  .dg-row{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:12.5px;}
+  .dg-row:last-child{border-bottom:none;}
+  .dg-row.me{font-weight:700;}
+  .dg-row .dg-rank{width:22px; color:var(--muted); font-family:'IBM Plex Mono',monospace;}
+  .dg-row .dg-name{flex:1;}
+  .dg-row .dg-guess{font-family:'IBM Plex Mono',monospace; color:var(--muted); width:90px; text-align:right;}
+  .dg-row .dg-pts{font-family:'IBM Plex Mono',monospace; color:var(--amber); width:56px; text-align:right; font-weight:700;}
+  .dg-standing-row{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:12.5px;}
+  .dg-standing-row:last-child{border-bottom:none;}
+  .dg-standing-row.me{font-weight:700; color:var(--ink);}
+  .dg-standing-row .dg-name{flex:1;}
+  .dg-standing-row .dg-rounds{color:var(--muted); font-size:11px;}
+  .dg-standing-row .dg-total{font-family:'IBM Plex Mono',monospace; font-weight:700;}
+
   /* ---- MEMOS ---- */
   .memo-textarea{
     width:100%; min-height:64px; font-family:'IBM Plex Sans', sans-serif; font-size:13px;
@@ -495,6 +525,7 @@
     <button class="tab" data-tab="hangman">Виселица 🎯</button>
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
+    <button class="tab" data-tab="distance">Расстояния 🌍</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -583,6 +614,43 @@
       <div class="card" style="margin-top:16px;">
         <h3 style="font-size:15px; margin-bottom:14px;">📜 История игр</h3>
         <div id="bjHistoryList"></div>
+      </div>
+    </div>
+
+    <!-- DISTANCE GAME -->
+    <div class="panel" id="panel-distance">
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; margin-bottom:10px;">🌍 Угадай расстояние — правила</h3>
+        <div class="dg-rules">
+          Каждый раунд — общий для всех игроков. Показываются два города с одного континента и карта с маршрутом
+          между ними — карту можно приближать и отдалять, видно страны и крупные города рядом. Внизу — поле для
+          ответа: впиши на глаз расстояние между городами в километрах и отправь, пока не истекло время раунда.<br><br>
+          <b>Очки:</b> после того как раунд завершится, все ответы сравниваются по точности (кто ближе к реальному
+          расстоянию). Если играешь один — всегда получаешь 1 очко за раунд. Если играющих N человек — самый точный
+          получает N очков, следующий по точности N−1, и так далее вниз до 1 очка у самого неточного ответа.
+          Общий счёт копится по всем раундам — таблица справа (или ниже на телефоне).
+        </div>
+      </div>
+
+      <div class="dg-layout">
+        <div class="dg-main">
+          <div class="card" style="margin-bottom:16px;">
+            <div class="horse-top">
+              <div id="dgRoundLabel" class="mono" style="font-weight:600;"></div>
+              <div class="horse-status-label" id="dgStatusLabel"></div>
+            </div>
+            <div id="dgQuestion" class="dg-question"></div>
+            <div id="dgMap" class="dg-map"></div>
+            <div id="dgAnswerZone" class="dg-answer-zone"></div>
+            <div id="dgResults" class="dg-results"></div>
+          </div>
+        </div>
+        <div class="dg-side">
+          <div class="card">
+            <h3 style="font-size:14px; margin-bottom:10px;">🏆 Общий счёт</h3>
+            <div id="dgStandings"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2454,6 +2522,302 @@ async function initNotes(){
   boardSyncTimer = setInterval(boardSyncTick, 6000);
 }
 
+/* ============ УГАДАЙ РАССТОЯНИЕ ============ */
+const CITY_BANK = [
+  // Европа
+  {name:'Москва', country:'Россия', continent:'Европа', lat:55.7558, lon:37.6173},
+  {name:'Париж', country:'Франция', continent:'Европа', lat:48.8566, lon:2.3522},
+  {name:'Лондон', country:'Великобритания', continent:'Европа', lat:51.5074, lon:-0.1278},
+  {name:'Берлин', country:'Германия', continent:'Европа', lat:52.5200, lon:13.4050},
+  {name:'Мадрид', country:'Испания', continent:'Европа', lat:40.4168, lon:-3.7038},
+  {name:'Рим', country:'Италия', continent:'Европа', lat:41.9028, lon:12.4964},
+  {name:'Стамбул', country:'Турция', continent:'Европа', lat:41.0082, lon:28.9784},
+  {name:'Афины', country:'Греция', continent:'Европа', lat:37.9838, lon:23.7275},
+  {name:'Варшава', country:'Польша', continent:'Европа', lat:52.2297, lon:21.0122},
+  {name:'Вена', country:'Австрия', continent:'Европа', lat:48.2082, lon:16.3738},
+  {name:'Амстердам', country:'Нидерланды', continent:'Европа', lat:52.3676, lon:4.9041},
+  {name:'Лиссабон', country:'Португалия', continent:'Европа', lat:38.7223, lon:-9.1393},
+  {name:'Стокгольм', country:'Швеция', continent:'Европа', lat:59.3293, lon:18.0686},
+  {name:'Киев', country:'Украина', continent:'Европа', lat:50.4501, lon:30.5234},
+  {name:'Прага', country:'Чехия', continent:'Европа', lat:50.0755, lon:14.4378},
+  // Азия
+  {name:'Токио', country:'Япония', continent:'Азия', lat:35.6762, lon:139.6503},
+  {name:'Пекин', country:'Китай', continent:'Азия', lat:39.9042, lon:116.4074},
+  {name:'Сеул', country:'Южная Корея', continent:'Азия', lat:37.5665, lon:126.9780},
+  {name:'Бангкок', country:'Таиланд', continent:'Азия', lat:13.7563, lon:100.5018},
+  {name:'Дели', country:'Индия', continent:'Азия', lat:28.7041, lon:77.1025},
+  {name:'Мумбаи', country:'Индия', continent:'Азия', lat:19.0760, lon:72.8777},
+  {name:'Дубай', country:'ОАЭ', continent:'Азия', lat:25.2048, lon:55.2708},
+  {name:'Алматы', country:'Казахстан', continent:'Азия', lat:43.2220, lon:76.8512},
+  {name:'Астана', country:'Казахстан', continent:'Азия', lat:51.1694, lon:71.4491},
+  {name:'Ташкент', country:'Узбекистан', continent:'Азия', lat:41.2995, lon:69.2401},
+  {name:'Сингапур', country:'Сингапур', continent:'Азия', lat:1.3521, lon:103.8198},
+  {name:'Джакарта', country:'Индонезия', continent:'Азия', lat:-6.2088, lon:106.8456},
+  {name:'Манила', country:'Филиппины', continent:'Азия', lat:14.5995, lon:120.9842},
+  {name:'Ханой', country:'Вьетнам', continent:'Азия', lat:21.0278, lon:105.8342},
+  {name:'Карачи', country:'Пакистан', continent:'Азия', lat:24.8607, lon:67.0011},
+  // Северная Америка
+  {name:'Нью-Йорк', country:'США', continent:'Северная Америка', lat:40.7128, lon:-74.0060},
+  {name:'Лос-Анджелес', country:'США', continent:'Северная Америка', lat:34.0522, lon:-118.2437},
+  {name:'Чикаго', country:'США', continent:'Северная Америка', lat:41.8781, lon:-87.6298},
+  {name:'Торонто', country:'Канада', continent:'Северная Америка', lat:43.6532, lon:-79.3832},
+  {name:'Мехико', country:'Мексика', continent:'Северная Америка', lat:19.4326, lon:-99.1332},
+  {name:'Майами', country:'США', continent:'Северная Америка', lat:25.7617, lon:-80.1918},
+  {name:'Ванкувер', country:'Канада', continent:'Северная Америка', lat:49.2827, lon:-123.1207},
+  {name:'Хьюстон', country:'США', continent:'Северная Америка', lat:29.7604, lon:-95.3698},
+  // Южная Америка
+  {name:'Сан-Паулу', country:'Бразилия', continent:'Южная Америка', lat:-23.5505, lon:-46.6333},
+  {name:'Буэнос-Айрес', country:'Аргентина', continent:'Южная Америка', lat:-34.6037, lon:-58.3816},
+  {name:'Рио-де-Жанейро', country:'Бразилия', continent:'Южная Америка', lat:-22.9068, lon:-43.1729},
+  {name:'Лима', country:'Перу', continent:'Южная Америка', lat:-12.0464, lon:-77.0428},
+  {name:'Богота', country:'Колумбия', continent:'Южная Америка', lat:4.7110, lon:-74.0721},
+  {name:'Сантьяго', country:'Чили', continent:'Южная Америка', lat:-33.4489, lon:-70.6693},
+  // Африка
+  {name:'Каир', country:'Египет', continent:'Африка', lat:30.0444, lon:31.2357},
+  {name:'Лагос', country:'Нигерия', continent:'Африка', lat:6.5244, lon:3.3792},
+  {name:'Найроби', country:'Кения', continent:'Африка', lat:-1.2921, lon:36.8219},
+  {name:'Йоханнесбург', country:'ЮАР', continent:'Африка', lat:-26.2041, lon:28.0473},
+  {name:'Касабланка', country:'Марокко', continent:'Африка', lat:33.5731, lon:-7.5898},
+  {name:'Аддис-Абеба', country:'Эфиопия', continent:'Африка', lat:9.0300, lon:38.7400},
+  // Океания
+  {name:'Сидней', country:'Австралия', continent:'Океания', lat:-33.8688, lon:151.2093},
+  {name:'Мельбурн', country:'Австралия', continent:'Океания', lat:-37.8136, lon:144.9631},
+  {name:'Окленд', country:'Новая Зеландия', continent:'Океания', lat:-36.8485, lon:174.7633},
+  {name:'Перт', country:'Австралия', continent:'Океания', lat:-31.9505, lon:115.8605},
+];
+
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return Math.round(R * c);
+}
+function fmtKm(n){ return Math.round(n).toLocaleString('ru-RU') + ' км'; }
+
+const DG_ANSWER_MS = 40000;   // время на ответ в раунде
+const DG_RESULTS_MS = 15000;  // сколько показываем результаты перед новым раундом
+
+let dgRound = null;
+let dgAnswers = [];
+let dgStandings = [];
+let dgSyncTimer = null;
+let dgMap = null, dgMapLayer = null;
+
+function pickDistanceCities(){
+  const continents = [...new Set(CITY_BANK.map(c=>c.continent))];
+  const continent = continents[Math.floor(Math.random()*continents.length)];
+  const pool = CITY_BANK.filter(c=>c.continent===continent);
+  const a = pool[Math.floor(Math.random()*pool.length)];
+  let b = a;
+  while(b.name===a.name){ b = pool[Math.floor(Math.random()*pool.length)]; }
+  return {continent, a, b};
+}
+
+async function loadCurrentDistanceRound(){
+  let {data} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(!data){
+    await createNextDistanceRound(1);
+    ({data} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+  }
+  dgRound = data;
+}
+async function createNextDistanceRound(roundNo){
+  const {a, b, continent} = pickDistanceCities();
+  const actual_km = haversineKm(a.lat, a.lon, b.lat, b.lon);
+  try{
+    await sb.from('distance_rounds').insert({
+      round_no: roundNo, status: 'answering', continent,
+      city_a: a, city_b: b, actual_km,
+      answer_deadline: new Date(Date.now()+DG_ANSWER_MS).toISOString(),
+    });
+  }catch(e){ /* другой клиент уже создал раунд — не страшно */ }
+}
+async function loadDistanceAnswers(){
+  dgAnswers = [];
+  if(!dgRound) return;
+  const {data} = await sb.from('distance_answers').select('*').eq('round_id', dgRound.id);
+  dgAnswers = data || [];
+}
+async function loadDistanceStandings(){
+  const {data} = await sb.from('distance_scores').select('user_id,total_points,rounds_played').order('total_points',{ascending:false}).limit(30);
+  dgStandings = data || [];
+}
+
+async function submitDistanceGuess(){
+  const input = document.getElementById('dgGuessInput');
+  const val = parseFloat((input?.value||'').replace(',','.'));
+  if(!dgRound || dgRound.status!=='answering') return;
+  if(!val || val<=0){ alert('Введи расстояние в километрах'); return; }
+  try{
+    const {error} = await sb.from('distance_answers').insert({round_id:dgRound.id, user_id:currentUser.id, guess_km:val});
+    if(error) throw error;
+    await loadDistanceAnswers();
+    renderDistanceGame();
+  }catch(e){ alert('Не удалось отправить ответ (возможно, уже отвечал в этом раунде): '+e.message); }
+}
+
+// Очки: N игроков ответили -> самый точный получает N очков, следующий N-1, ... последний 1 очко.
+async function finalizeDistanceRound(){
+  if(!dgRound || dgRound.status!=='answering') return;
+  if(new Date(dgRound.answer_deadline).getTime() > Date.now()) return;
+
+  const {data} = await sb.from('distance_rounds')
+    .update({status:'finished', finished_at:new Date().toISOString()})
+    .eq('id', dgRound.id).eq('status','answering')
+    .select().maybeSingle();
+  if(!data){ await loadCurrentDistanceRound(); await loadDistanceAnswers(); renderDistanceGame(); return; }
+  dgRound = data;
+
+  await loadDistanceAnswers();
+  const n = dgAnswers.length;
+  if(n>0){
+    const sorted = [...dgAnswers].sort((x,y)=> Math.abs(x.guess_km-dgRound.actual_km) - Math.abs(y.guess_km-dgRound.actual_km));
+    for(let i=0;i<sorted.length;i++){
+      const points = n - i;
+      await sb.from('distance_answers').update({points}).eq('id', sorted[i].id);
+      const {data: existing} = await sb.from('distance_scores').select('total_points,rounds_played').eq('user_id', sorted[i].user_id).maybeSingle();
+      const newTotal = (existing?.total_points||0) + points;
+      const newRounds = (existing?.rounds_played||0) + 1;
+      await sb.from('distance_scores').upsert({user_id:sorted[i].user_id, total_points:newTotal, rounds_played:newRounds, updated_at:new Date().toISOString()});
+    }
+  }
+  await loadDistanceAnswers();
+  await loadDistanceStandings();
+  renderDistanceGame();
+}
+
+async function distanceSyncTick(){
+  try{
+    if(!dgRound) return;
+    if(dgRound.status==='answering'){
+      if(new Date(dgRound.answer_deadline).getTime() <= Date.now()){
+        await finalizeDistanceRound();
+      } else {
+        const {data} = await sb.from('distance_rounds').select('*').eq('id', dgRound.id).maybeSingle();
+        if(data && data.status!==dgRound.status){ dgRound=data; }
+        await loadDistanceAnswers();
+      }
+    } else {
+      const elapsed = Date.now() - new Date(dgRound.finished_at).getTime();
+      if(elapsed > DG_RESULTS_MS){
+        await createNextDistanceRound((dgRound.round_no||0)+1);
+        await loadCurrentDistanceRound();
+        await loadDistanceAnswers();
+        await loadDistanceStandings();
+      }
+    }
+  }catch(e){ console.error('distance sync error', e); }
+  renderDistanceGame();
+}
+
+// Карта строится только когда вкладка реально видима (иначе Leaflet посчитает размер 0x0).
+function dgRenderMap(){
+  const mapEl = document.getElementById('dgMap');
+  if(!mapEl || !dgRound || typeof L === 'undefined') return;
+  if(mapEl.offsetParent === null) return;
+  const a = dgRound.city_a, b = dgRound.city_b;
+
+  if(!dgMap){
+    dgMap = L.map('dgMap', {scrollWheelZoom:true});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap', maxZoom: 18,
+    }).addTo(dgMap);
+    dgMapLayer = L.layerGroup().addTo(dgMap);
+  }
+  dgMapLayer.clearLayers();
+  L.marker([a.lat,a.lon]).addTo(dgMapLayer).bindPopup(`${a.name}, ${a.country}`);
+  L.marker([b.lat,b.lon]).addTo(dgMapLayer).bindPopup(`${b.name}, ${b.country}`);
+  L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {color:'#B23A48', weight:3, dashArray:'6,6'}).addTo(dgMapLayer);
+
+  const bounds = L.latLngBounds([[a.lat,a.lon],[b.lat,b.lon]]);
+  setTimeout(()=>{
+    if(!dgMap) return;
+    dgMap.invalidateSize();
+    dgMap.fitBounds(bounds, {padding:[40,40]});
+  }, 60);
+}
+
+function renderDistanceGame(){
+  const roundLabel = document.getElementById('dgRoundLabel');
+  const statusLabel = document.getElementById('dgStatusLabel');
+  const questionEl = document.getElementById('dgQuestion');
+  const answerZone = document.getElementById('dgAnswerZone');
+  const resultsEl = document.getElementById('dgResults');
+  const standingsEl = document.getElementById('dgStandings');
+  if(!dgRound){ if(statusLabel) statusLabel.textContent='Загрузка...'; return; }
+
+  if(roundLabel) roundLabel.textContent = `Раунд №${dgRound.round_no}`;
+  const a = dgRound.city_a, b = dgRound.city_b;
+  if(questionEl) questionEl.textContent = `Какое расстояние между городами ${a.name} (${a.country}) и ${b.name} (${b.country})?`;
+
+  dgRenderMap();
+
+  const myAnswer = dgAnswers.find(x=>x.user_id===currentUser.id);
+
+  if(dgRound.status==='answering'){
+    const msLeft = Math.max(0, new Date(dgRound.answer_deadline).getTime() - Date.now());
+    if(statusLabel){ statusLabel.className='horse-status-label open'; statusLabel.textContent = `Осталось ${Math.ceil(msLeft/1000)} сек · ответили ${dgAnswers.length}`; }
+    if(answerZone){
+      if(myAnswer){
+        answerZone.innerHTML = `<div class="dg-submitted">✅ Ты ответил: ${fmtKm(myAnswer.guess_km)} — ждём остальных и конца раунда</div>`;
+      } else {
+        answerZone.innerHTML = `
+          <input type="number" id="dgGuessInput" placeholder="Расстояние в км" min="0" step="1">
+          <button onclick="submitDistanceGuess()">Ответить</button>
+          <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
+        `;
+        document.getElementById('dgGuessInput')?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
+      }
+    }
+    if(resultsEl) resultsEl.innerHTML='';
+  } else {
+    if(statusLabel){ statusLabel.className='horse-status-label'; statusLabel.textContent = 'Раунд завершён — следующий скоро'; }
+    if(answerZone) answerZone.innerHTML = '';
+    if(resultsEl){
+      const sorted = [...dgAnswers].sort((x,y)=> Math.abs(x.guess_km-dgRound.actual_km) - Math.abs(y.guess_km-dgRound.actual_km));
+      resultsEl.innerHTML = `
+        <div class="dg-actual">Настоящее расстояние: <b>${fmtKm(dgRound.actual_km)}</b></div>
+        ${sorted.length===0 ? `<div class="empty">Никто не успел ответить в этом раунде.</div>` :
+          sorted.map((row,i)=>{
+            const isMe = row.user_id===currentUser.id;
+            const err = Math.abs(row.guess_km - dgRound.actual_km);
+            return `<div class="dg-row ${isMe?'me':''}">
+              <span class="dg-rank">#${i+1}</span>
+              <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span style="color:var(--muted);">· погрешность ${fmtKm(err)}</span></span>
+              <span class="dg-guess">${fmtKm(row.guess_km)}</span>
+              <span class="dg-pts">+${row.points||0}</span>
+            </div>`;
+          }).join('')}
+      `;
+    }
+  }
+
+  if(standingsEl){
+    if(dgStandings.length===0){
+      standingsEl.innerHTML = `<div class="empty">Пока нет очков — сыграйте первый раунд!</div>`;
+    } else {
+      standingsEl.innerHTML = dgStandings.map(row=>{
+        const isMe = row.user_id===currentUser.id;
+        return `<div class="dg-standing-row ${isMe?'me':''}">
+          <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span class="dg-rounds">· ${row.rounds_played} раунд(ов)</span></span>
+          <span class="dg-total">${row.total_points}</span>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+async function initDistanceGame(){
+  await loadCurrentDistanceRound();
+  await loadDistanceAnswers();
+  await loadDistanceStandings();
+  renderDistanceGame();
+  if(dgSyncTimer) clearInterval(dgSyncTimer);
+  dgSyncTimer = setInterval(distanceSyncTick, 1500);
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -2461,6 +2825,7 @@ function initApp(){
       document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+      if(t.dataset.tab==='distance'){ dgRenderMap(); }
     };
   });
   document.querySelectorAll('.sup-subtab').forEach(t=>{
@@ -2488,6 +2853,7 @@ function initApp(){
   loadLeaderboard().then(renderLeaderboard);
   initHorseGame();
   initBlackjack();
+  initDistanceGame();
   initNotes();
 
   if(timerTick) clearInterval(timerTick);
@@ -3090,7 +3456,7 @@ document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.ke
   <button type="button" onclick="document.querySelector('.tab.active')?.click(); window.scrollTo({top:0,behavior:'smooth'})">🏠<span>Главная</span></button>
   <button type="button" onclick="document.querySelector('[data-tab=\"hangman\"]')?.click()">🎯<span>Виселица</span></button>
   <button type="button" onclick="document.querySelector('[data-tab=\"horses\"]')?.click()">🐎<span>Скачки</span></button>
-  <button type="button" onclick="document.querySelector('[data-tab=\"ranking\"]')?.click()">🏆<span>Рейтинг</span></button>
+  <button type="button" onclick="document.querySelector('[data-tab=\"distance\"]')?.click()">🌍<span>Расстояния</span></button>
 </nav>
 
 </body>
