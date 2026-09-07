@@ -256,6 +256,8 @@
   }
   .horse-controls{border-top:1px solid var(--line); padding-top:14px;}
   .bet-suits{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+  .bet-amount-quick{display:flex; gap:6px; margin-bottom:10px;}
+  .bet-amount-quick button{padding:6px 12px; font-size:12.5px;}
   .bet-suit-btn{
     flex:1; min-width:110px; padding:10px; border-radius:8px; border:2px solid var(--line); background:#fff;
     cursor:pointer; text-align:center; font-family:'Space Grotesk', sans-serif;
@@ -1383,6 +1385,10 @@ async function loadHorseBalancesTop(){
 }
 
 function selectBetSuit(key){ selectedBetSuit = key; renderHorseGame(); }
+function setBetAmount(v){
+  const el = document.getElementById('betAmount');
+  if(el){ el.value = v; el.focus(); }
+}
 
 async function placeBet(){
   const amountInput = document.getElementById('betAmount');
@@ -1634,6 +1640,13 @@ function renderHorseGame(){
   </div>` : '';
 
   if(currentRace.status === 'betting'){
+    // Форма ставки перестраивается каждые 300мс (анимация трека) — раньше это стирало
+    // то, что игрок только что ввёл в поле суммы, откатывая его обратно к 100.
+    // Теперь читаем текущее значение поля до перестройки и переносим его в новую разметку.
+    const existingAmountInput = document.getElementById('betAmount');
+    const keepAmount = existingAmountInput && existingAmountInput.value ? existingAmountInput.value : 100;
+    const wasFocused = document.activeElement && document.activeElement.id === 'betAmount';
+
     controlsEl.innerHTML = `
       <div class="bet-suits" id="betSuitsWrap">
         ${SUITS.map(s=>`<div class="bet-suit-btn ${selectedBetSuit===s.key?'selected':''}" onclick="selectBetSuit('${s.key}')">
@@ -1642,13 +1655,21 @@ function renderHorseGame(){
           <div class="odds">×${currentOdds(s.key).toFixed(2)}</div>
         </div>`).join('')}
       </div>
+      <div class="bet-amount-quick">
+        ${[100,200,500,1000].map(v=>`<button type="button" class="ghost" onclick="setBetAmount(${v})">${v}</button>`).join('')}
+      </div>
       <div class="form-row">
-        <input type="number" id="betAmount" min="100" max="10000" step="100" value="100" style="width:120px;">
+        <input type="number" id="betAmount" min="100" max="10000" step="100" value="${keepAmount}" style="width:120px;">
         <button onclick="placeBet()">Поставить</button>
         ${readyBtnHtml}
       </div>
       ${myBetsHtml}
       ${allBetsHtml}`;
+
+    if(wasFocused){
+      const freshInput = document.getElementById('betAmount');
+      if(freshInput){ freshInput.focus(); const len=freshInput.value.length; freshInput.setSelectionRange?.(len,len); }
+    }
   } else {
     controlsEl.innerHTML = (myBets.length>0 ? myBetsHtml : `<div class="empty">Ты не участвуешь в этой гонке — дождись следующей.</div>`) + allBetsHtml;
   }
@@ -2616,23 +2637,24 @@ function pickDistanceCities(){
 }
 
 async function loadCurrentDistanceRound(){
-  let {data} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  let {data, error} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(error){ console.error('distance_rounds select error (проверь, что миграция distance_game_migration.sql выполнена в Supabase):', error.message); }
   if(!data){
     await createNextDistanceRound(1);
-    ({data} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+    ({data, error} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
+    if(error){ console.error('distance_rounds select error:', error.message); }
   }
   dgRound = data;
 }
 async function createNextDistanceRound(roundNo){
   const {a, b, continent} = pickDistanceCities();
   const actual_km = haversineKm(a.lat, a.lon, b.lat, b.lon);
-  try{
-    await sb.from('distance_rounds').insert({
-      round_no: roundNo, status: 'answering', continent,
-      city_a: a, city_b: b, actual_km,
-      answer_deadline: new Date(Date.now()+DG_ANSWER_MS).toISOString(),
-    });
-  }catch(e){ /* другой клиент уже создал раунд — не страшно */ }
+  const {error} = await sb.from('distance_rounds').insert({
+    round_no: roundNo, status: 'answering', continent,
+    city_a: a, city_b: b, actual_km,
+    answer_deadline: new Date(Date.now()+DG_ANSWER_MS).toISOString(),
+  });
+  if(error) console.error('distance_rounds insert error:', error.message);
 }
 async function loadDistanceAnswers(){
   dgAnswers = [];
