@@ -377,9 +377,9 @@
   .dg-standing-row .dg-rounds{color:var(--muted); font-size:11px;}
   .dg-standing-row .dg-total{font-family:'IBM Plex Mono',monospace; font-weight:700;}
 
-  /* ---- 3D SANDBOX ---- */
+  /* ---- 3D SANDBOX / BLOCKSTRIKE ---- */
   .sb-card{padding:0; overflow:hidden;}
-  .sb-canvas-wrap{position:relative; width:100%; height:520px; background:#8fb3d9; border-radius:12px; overflow:hidden;}
+  .sb-canvas-wrap{position:relative; width:100%; height:560px; background:#8fb3d9; border-radius:12px; overflow:hidden; cursor:none;}
   .sb-canvas-wrap:fullscreen{height:100vh; border-radius:0;}
   #sbCanvas{width:100%; height:100%; display:block; touch-action:none; outline:none;}
   .sb-dpad{position:absolute; left:14px; bottom:14px; z-index:3; display:grid; grid-template-columns:44px 44px 44px; grid-template-rows:44px 44px 44px; gap:4px; user-select:none;}
@@ -389,12 +389,41 @@
   .sb-down{grid-row:2; grid-column:2;}
   .sb-right{grid-row:2; grid-column:3;}
   .sb-jump{position:absolute; right:14px; bottom:14px; z-index:3; width:64px; height:64px; border-radius:50%; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:11.5px; touch-action:none;}
-  .sb-fullscreen{position:absolute; right:14px; top:14px; z-index:3; width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); font-size:16px; line-height:1;}
+  .sb-fullscreen{position:absolute; right:14px; top:14px; z-index:5; width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); font-size:16px; line-height:1; pointer-events:auto;}
+  .sb-ui{position:absolute; inset:0; pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.85); font-family:'IBM Plex Sans',sans-serif; z-index:4;}
+  .sb-crosshair{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:26px; font-weight:300; opacity:.9; line-height:1; transition:color .1s;}
+  .sb-crosshair.shooting{color:#ff6b6b;}
+  .sb-topbar{position:absolute; top:14px; left:50%; transform:translateX(-50%); display:flex; gap:28px; font-size:16px; font-weight:700; letter-spacing:.5px;}
+  .sb-bottom{position:absolute; bottom:18px; left:18px; right:18px; display:flex; align-items:flex-end; gap:24px;}
+  .sb-stat{display:flex; flex-direction:column; gap:2px;}
+  .sb-stat .label{font-size:10px; opacity:.7; letter-spacing:1px;}
+  .sb-bar{width:110px; height:9px; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.25); overflow:hidden;}
+  .sb-bar-fill{height:100%; transition:width .15s;}
+  #sbHpFill{background:linear-gradient(90deg,#22c55e,#4ade80); width:100%;}
+  #sbArmorFill{background:linear-gradient(90deg,#3b82f6,#60a5fa); width:0%;}
+  .sb-ammo{margin-left:auto; font-size:26px; font-weight:700; font-family:'IBM Plex Mono',monospace;}
+  .sb-weapon{position:absolute; bottom:70px; right:18px; font-size:14px; font-weight:600; opacity:.95;}
+  .sb-money{position:absolute; bottom:18px; left:50%; transform:translateX(-50%); font-size:16px; font-weight:700; color:#4ade80;}
+  .sb-hint{position:absolute; top:48px; left:50%; transform:translateX(-50%); font-size:11.5px; opacity:.55; white-space:nowrap;}
+  .sb-buy-menu{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(12,12,18,.97); border:1px solid #333; padding:22px 26px; border-radius:12px; pointer-events:auto; min-width:320px; max-height:75%; overflow-y:auto; box-shadow:0 16px 40px rgba(0,0,0,.55); z-index:6; display:none;}
+  .sb-buy-menu.open{display:block;}
+  .sb-buy-menu h3{margin-bottom:12px; font-size:16px; letter-spacing:1px; text-align:center; color:#fff;}
+  .sb-buy-section{margin-bottom:12px;}
+  .sb-buy-section .title{font-size:11px; opacity:.5; margin-bottom:6px; letter-spacing:1px; color:#aaa;}
+  .sb-buy-section button{display:flex; justify-content:space-between; width:100%; background:#1a1a24; border:1px solid #333; color:#fff; padding:9px 12px; margin-bottom:5px; cursor:pointer; font-size:13px; border-radius:6px; transition:.12s; font-family:'IBM Plex Sans',sans-serif;}
+  .sb-buy-section button:hover{background:#252532; border-color:#555;}
+  .sb-buy-section button span{color:#4ade80; font-weight:600;}
+  .sb-buy-close{width:100%; margin-top:6px; padding:10px; background:#2a2a35; border:1px solid #444; color:#fff; cursor:pointer; border-radius:6px; font-size:13px;}
+  .sb-death{position:absolute; inset:0; background:rgba(0,0,0,.7); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:7; pointer-events:none;}
+  .sb-death.show{display:flex;}
+  .sb-death-text{font-size:36px; font-weight:800; letter-spacing:3px; color:#ef4444; margin-bottom:8px;}
+  .sb-respawn{font-size:15px; opacity:.85; color:#fff;}
   @media (max-width:700px){
     .sb-canvas-wrap{height:60vh; min-height:360px;}
+    .sb-hint{font-size:10px; white-space:normal; text-align:center; max-width:90%;}
   }
   @media (min-width:701px){
-    .sb-dpad, .sb-jump{ display:none; } /* на десктопе — клавиатура и мышь */
+    .sb-dpad, .sb-jump{ display:none; }
   }
 
   /* ---- MEMOS ---- */
@@ -549,7 +578,7 @@
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
     <button class="tab" data-tab="distance">Расстояния 🌍</button>
-    <button class="tab" data-tab="sandbox">Песочница 🧱</button>
+    <button class="tab" data-tab="sandbox">BlockStrike 🧱</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -685,16 +714,71 @@
     <!-- 3D SANDBOX -->
     <div class="panel" id="panel-sandbox">
       <div class="card" style="margin-bottom:16px;">
-        <h3 style="font-size:15px; margin-bottom:8px;">🧱 Песочница — как играть</h3>
+        <h3 style="font-size:15px; margin-bottom:8px;">🧱 BlockStrike — тактический шутер в браузере</h3>
         <div class="dg-rules">
-          Простой 3D-мир с коробками, по которому можно погулять. Управление с клавиатуры:
-          <b>W A S D</b> или стрелки — ходьба, <b>пробел</b> — прыжок, зажатая левая кнопка мыши — покрутить камеру,
-          колесо мыши — приблизить/отдалить. На телефоне снизу появятся кнопки движения и джойстик камеры (свайп по экрану).
+          Вид от первого лица, графика в стиле Roblox. Кликни по экрану, чтобы захватить мышь.<br>
+          <b>WASD</b> — ходьба · <b>Shift</b> — бег · <b>Пробел</b> — прыжок · <b>ЛКМ</b> — стрельба · <b>R</b> — перезарядка · <b>B</b> — магазин · <b>1–4</b> — смена оружия.<br>
+          На телефоне — кнопки движения (камера пока только с ПК).
         </div>
       </div>
       <div class="card sb-card">
         <div class="sb-canvas-wrap" id="sbCanvasWrap">
           <canvas id="sbCanvas"></canvas>
+
+          <!-- UI -->
+          <div class="sb-ui" id="sbUi">
+            <div class="sb-crosshair" id="sbCrosshair">+</div>
+            <div class="sb-topbar">
+              <div id="sbTimer">1:45</div>
+              <div id="sbScore">CT 0 : 0 T</div>
+            </div>
+            <div class="sb-hint">Кликни чтобы играть · WASD · Мышь · ЛКМ · R · B · 1-4</div>
+            <div class="sb-bottom">
+              <div class="sb-stat">
+                <div class="label">HP</div>
+                <div class="sb-bar"><div class="sb-bar-fill" id="sbHpFill"></div></div>
+                <div id="sbHpText">100</div>
+              </div>
+              <div class="sb-stat">
+                <div class="label">ARMOR</div>
+                <div class="sb-bar"><div class="sb-bar-fill" id="sbArmorFill"></div></div>
+                <div id="sbArmorText">0</div>
+              </div>
+              <div class="sb-ammo"><span id="sbAmmoCur">30</span> / <span id="sbAmmoRes">90</span></div>
+            </div>
+            <div class="sb-weapon" id="sbWeaponName">AK-47</div>
+            <div class="sb-money" id="sbMoney">$800</div>
+          </div>
+
+          <!-- Buy menu -->
+          <div class="sb-buy-menu" id="sbBuyMenu">
+            <h3>МАГАЗИН</h3>
+            <div class="sb-buy-section">
+              <div class="title">Винтовки</div>
+              <button data-weapon="ak47">AK-47 <span>$2700</span></button>
+              <button data-weapon="m4a1">M4A1 <span>$3100</span></button>
+              <button data-weapon="awp">AWP <span>$4750</span></button>
+            </div>
+            <div class="sb-buy-section">
+              <div class="title">Пистолеты</div>
+              <button data-weapon="deagle">Desert Eagle <span>$700</span></button>
+              <button data-weapon="glock">Glock-18 <span>$200</span></button>
+              <button data-weapon="usp">USP-S <span>$200</span></button>
+            </div>
+            <div class="sb-buy-section">
+              <div class="title">Броня</div>
+              <button data-item="kevlar">Броня <span>$650</span></button>
+              <button data-item="helmet">Шлем + Броня <span>$1000</span></button>
+            </div>
+            <button class="sb-buy-close" id="sbBuyClose">Закрыть [B]</button>
+          </div>
+
+          <!-- Death -->
+          <div class="sb-death" id="sbDeath">
+            <div class="sb-death-text">ВЫ УБИТЫ</div>
+            <div class="sb-respawn">Респаун через <span id="sbRespawnCount">3</span></div>
+          </div>
+
           <div class="sb-dpad" id="sbDpad">
             <button type="button" class="sb-btn sb-up" data-key="KeyW">▲</button>
             <button type="button" class="sb-btn sb-left" data-key="KeyA">◀</button>
@@ -2983,133 +3067,365 @@ async function initDistanceGame(){
 }
 
 /* ============ ПЕСОЧНИЦА 3D (Babylon.js) ============ */
+/* ============ BLOCKSTRIKE / SANDBOX FPS ============ */
 let sbCanvas, sbEngine, sbScene, sbPlayer;
 let sbStarted = false;
+let sbBuyOpen = false;
 
-// Клавиатура + сенсорные кнопки пишут в один и тот же набор "нажатых клавиш",
-// поэтому Player.update() не знает и не должен знать, откуда пришло нажатие.
-const Input = {
-  keys: {},
-  init(){
-    if(this._inited) return;
-    this._inited = true;
-    window.addEventListener('keydown', e=>{ this.keys[e.code] = true; });
-    window.addEventListener('keyup', e=>{ this.keys[e.code] = false; });
-  },
-  isDown(code){ return !!this.keys[code]; },
-  set(code, val){ this.keys[code] = val; },
+const SBWeapons = {
+  ak47:  { id:'ak47',  name:'AK-47',        damage:36, rpm:600, magSize:30, maxReserve:90, reloadTime:2.5, recoil:{x:0.55,y:1.9}, spread:0.018, price:2700, movePenalty:0.15 },
+  m4a1:  { id:'m4a1',  name:'M4A1',         damage:33, rpm:666, magSize:30, maxReserve:90, reloadTime:3.1, recoil:{x:0.35,y:1.45},spread:0.013, price:3100, movePenalty:0.12 },
+  awp:   { id:'awp',   name:'AWP',          damage:115,rpm:41,  magSize:10, maxReserve:30, reloadTime:3.7, recoil:{x:0.15,y:4.2}, spread:0.002, price:4750, movePenalty:0.35 },
+  deagle:{ id:'deagle',name:'Desert Eagle', damage:53, rpm:267, magSize:7,  maxReserve:35, reloadTime:2.2, recoil:{x:0.9,y:3.1},  spread:0.022, price:700,  movePenalty:0.05 },
+  glock: { id:'glock', name:'Glock-18',     damage:30, rpm:400, magSize:20, maxReserve:120,reloadTime:2.2, recoil:{x:0.3,y:1.1},  spread:0.016, price:200,  movePenalty:0.03 },
+  usp:   { id:'usp',   name:'USP-S',        damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200,  movePenalty:0.03 }
 };
 
-class Player {
+const SBInput = {
+  keys: {},
+  mouse: { dx:0, dy:0, left:false, right:false },
+  pointerLocked: false,
+  _inited: false,
+
+  init(canvas){
+    if(this._inited) return;
+    this._inited = true;
+
+    window.addEventListener('keydown', e=>{
+      this.keys[e.code] = true;
+      if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', e=>{ this.keys[e.code] = false; });
+
+    canvas.addEventListener('click', ()=>{
+      if(!this.pointerLocked && !sbBuyOpen) canvas.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange', ()=>{
+      this.pointerLocked = document.pointerLockElement === canvas;
+    });
+    document.addEventListener('mousemove', e=>{
+      if(!this.pointerLocked) return;
+      this.mouse.dx += e.movementX;
+      this.mouse.dy += e.movementY;
+    });
+    document.addEventListener('mousedown', e=>{
+      if(e.button===0) this.mouse.left = true;
+      if(e.button===2) this.mouse.right = true;
+    });
+    document.addEventListener('mouseup', e=>{
+      if(e.button===0) this.mouse.left = false;
+      if(e.button===2) this.mouse.right = false;
+    });
+    canvas.addEventListener('contextmenu', e=> e.preventDefault());
+  },
+
+  isDown(code){ return !!this.keys[code]; },
+  set(code, val){ this.keys[code] = val; },
+  consumeMouse(){
+    const d = { dx:this.mouse.dx, dy:this.mouse.dy };
+    this.mouse.dx = 0; this.mouse.dy = 0;
+    return d;
+  },
+  reset(){ this.keys={}; this.mouse.left=false; this.mouse.right=false; this.mouse.dx=0; this.mouse.dy=0; }
+};
+
+class SBPlayer {
   constructor(scene){
     this.scene = scene;
+    this.walkSpeed = 5.2;
+    this.sprintMult = 1.32;
+    this.jumpForce = 7.2;
+    this.gravity = -22;
+    this.airControl = 0.35;
+    this.velocity = new BABYLON.Vector3(0,0,0);
+    this.onGround = true;
+    this.isAlive = true;
 
-    this.mesh = BABYLON.MeshBuilder.CreateCapsule('player', {height:1.8, radius:0.4}, scene);
-    this.mesh.position = new BABYLON.Vector3(0, 6, 0);
-    this.mesh.ellipsoid = new BABYLON.Vector3(0.4, 0.9, 0.4);
-    this.mesh.ellipsoidOffset = new BABYLON.Vector3(0, 0.9, 0);
-    this.mesh.checkCollisions = true;
-    this.mesh.isPickable = false;
-    const mat = new BABYLON.StandardMaterial('pmat', scene);
-    mat.diffuseColor = new BABYLON.Color3(0.91, 0.56, 0.22);
-    this.mesh.material = mat;
+    this.health = 100;
+    this.armor = 0;
+    this.hasHelmet = false;
+    this.money = 800;
 
-    this.camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 1.15, 14, this.mesh.position.clone(), scene);
-    this.camera.lowerRadiusLimit = 5;
-    this.camera.upperRadiusLimit = 26;
-    this.camera.lowerBetaLimit = 0.25;
-    this.camera.upperBetaLimit = Math.PI/2.05;
-    this.camera.wheelPrecision = 35;
-    this.camera.panningSensibility = 0;
-    this.camera.attachControl(scene.getEngine().getRenderingCanvas(), true);
+    this.camera = new BABYLON.UniversalCamera('sbCam', new BABYLON.Vector3(0, 1.7, -8), scene);
+    this.camera.fov = 1.05;
+    this.camera.minZ = 0.05;
+    this.camera.maxZ = 400;
+    this.camera.inertia = 0;
+    this.camera.angularSensibility = 1;
     scene.activeCamera = this.camera;
 
-    this.velocityY = 0;
-    this.speed = 8;
-    this.gravity = -22;
-    this.jumpPower = 9;
-    this.grounded = false;
+    this.currentWeaponId = 'ak47';
+    this.weapon = SBWeapons.ak47;
+    this.ammo = this.weapon.magSize;
+    this.reserve = this.weapon.maxReserve;
+    this.isReloading = false;
+    this.reloadEnd = 0;
+    this.lastShot = 0;
+    this.owned = new Set(['ak47','glock']);
+    this.recoilPitch = 0;
+    this.recoilYaw = 0;
+
+    this.updateUI();
   }
 
   update(dt){
-    dt = Math.min(dt, 0.05); // защита от огромного скачка dt при переключении вкладок
+    if(!this.isAlive) return;
+    dt = Math.min(dt, 0.05);
+
+    const {dx, dy} = SBInput.consumeMouse();
+    const sens = 0.00215;
+    this.camera.rotation.y += dx * sens;
+    this.camera.rotation.x += dy * sens;
+    this.camera.rotation.x = BABYLON.Scalar.Clamp(this.camera.rotation.x, -1.45, 1.45);
+
+    this.recoilPitch *= 0.86;
+    this.recoilYaw *= 0.86;
+    this.camera.rotation.x += this.recoilPitch * dt * 60;
+    this.camera.rotation.y += this.recoilYaw * dt * 60;
+
+    let ix=0, iz=0;
+    if(SBInput.isDown('KeyW')||SBInput.isDown('ArrowUp'))    iz += 1;
+    if(SBInput.isDown('KeyS')||SBInput.isDown('ArrowDown'))  iz -= 1;
+    if(SBInput.isDown('KeyA')||SBInput.isDown('ArrowLeft'))  ix -= 1;
+    if(SBInput.isDown('KeyD')||SBInput.isDown('ArrowRight')) ix += 1;
 
     const forward = this.camera.getDirection(BABYLON.Vector3.Forward());
-    forward.y = 0;
-    if(forward.lengthSquared() > 0.0001) forward.normalize();
-    const right = BABYLON.Vector3.Cross(BABYLON.Vector3.Up(), forward);
-    if(right.lengthSquared() > 0.0001) right.normalize();
+    const right   = this.camera.getDirection(BABYLON.Vector3.Right());
+    forward.y = 0; right.y = 0;
+    forward.normalize(); right.normalize();
 
-    let move = BABYLON.Vector3.Zero();
-    if(Input.isDown('KeyW') || Input.isDown('ArrowUp'))    move.addInPlace(forward);
-    if(Input.isDown('KeyS') || Input.isDown('ArrowDown'))  move.subtractInPlace(forward);
-    if(Input.isDown('KeyD') || Input.isDown('ArrowRight')) move.addInPlace(right);
-    if(Input.isDown('KeyA') || Input.isDown('ArrowLeft'))  move.subtractInPlace(right);
-    if(move.lengthSquared() > 0) move.normalize().scaleInPlace(this.speed * dt);
+    let move = forward.scale(iz).add(right.scale(ix));
+    if(move.lengthSquared()>0) move.normalize();
 
-    this.velocityY += this.gravity * dt;
-    if(this.velocityY < -40) this.velocityY = -40;
-    move.y = this.velocityY * dt;
+    const sprint = SBInput.isDown('ShiftLeft') && iz>0 && !SBInput.mouse.right;
+    let speed = this.walkSpeed * (sprint ? this.sprintMult : 1);
+    speed *= 1 - (this.weapon.movePenalty||0);
 
-    const beforeY = this.mesh.position.y;
-    this.mesh.moveWithCollisions(move);
-
-    // Если вертикальное перемещение почти остановилось коллизией, пока падали — значит, на земле.
-    const actualDy = this.mesh.position.y - beforeY;
-    this.grounded = this.velocityY < 0 && Math.abs(actualDy - move.y) > 0.001;
-    if(this.grounded) this.velocityY = 0;
-
-    if(Input.isDown('Space') && this.grounded){
-      this.velocityY = this.jumpPower;
-      this.grounded = false;
+    if(this.onGround){
+      this.velocity.x = move.x * speed;
+      this.velocity.z = move.z * speed;
+    } else {
+      this.velocity.x += move.x * speed * this.airControl * dt * 10;
+      this.velocity.z += move.z * speed * this.airControl * dt * 10;
+      const h = new BABYLON.Vector3(this.velocity.x,0,this.velocity.z);
+      if(h.length() > speed*1.1){ h.normalize().scaleInPlace(speed*1.1); this.velocity.x=h.x; this.velocity.z=h.z; }
     }
 
-    this.camera.target.copyFrom(this.mesh.position);
-
-    if(this.mesh.position.y < -25){ // упал за карту — вернуть на старт
-      this.mesh.position.set(0, 6, 0);
-      this.velocityY = 0;
+    if(SBInput.isDown('Space') && this.onGround){
+      this.velocity.y = this.jumpForce;
+      this.onGround = false;
     }
+
+    this.velocity.y += this.gravity * dt;
+    this.camera.position.addInPlace(this.velocity.scale(dt));
+
+    if(this.camera.position.y < 1.7){
+      this.camera.position.y = 1.7;
+      this.velocity.y = 0;
+      this.onGround = true;
+    }
+
+    // walls soft clamp
+    const lim = 44;
+    this.camera.position.x = BABYLON.Scalar.Clamp(this.camera.position.x, -lim, lim);
+    this.camera.position.z = BABYLON.Scalar.Clamp(this.camera.position.z, -lim, lim);
+
+    if(this.isReloading && performance.now() >= this.reloadEnd) this.finishReload();
+    if(SBInput.isDown('KeyR') && !this.isReloading && this.ammo < this.weapon.magSize && this.reserve > 0) this.startReload();
+
+    if(SBInput.mouse.left && !this.isReloading && !sbBuyOpen) this.tryShoot();
+
+    if(SBInput.isDown('Digit1')) this.switchWeapon('ak47');
+    if(SBInput.isDown('Digit2')) this.switchWeapon('m4a1');
+    if(SBInput.isDown('Digit3')) this.switchWeapon('awp');
+    if(SBInput.isDown('Digit4')) this.switchWeapon('deagle');
+
+    this.updateUI();
+  }
+
+  tryShoot(){
+    const now = performance.now();
+    const delay = 60000 / this.weapon.rpm;
+    if(now - this.lastShot < delay) return;
+    if(this.ammo <= 0){
+      if(this.reserve > 0 && !this.isReloading) this.startReload();
+      return;
+    }
+    this.lastShot = now;
+    this.ammo--;
+    this.recoilPitch -= this.weapon.recoil.y * 0.012;
+    this.recoilYaw   += (Math.random()-0.5) * this.weapon.recoil.x * 0.025;
+
+    const cross = document.getElementById('sbCrosshair');
+    if(cross){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'), 60); }
+  }
+
+  startReload(){
+    if(this.isReloading || this.reserve<=0) return;
+    this.isReloading = true;
+    this.reloadEnd = performance.now() + this.weapon.reloadTime * 1000;
+  }
+  finishReload(){
+    const need = this.weapon.magSize - this.ammo;
+    const take = Math.min(need, this.reserve);
+    this.ammo += take; this.reserve -= take;
+    this.isReloading = false;
+  }
+
+  switchWeapon(id){
+    if(!SBWeapons[id]) return;
+    if(!this.owned.has(id) && id!=='glock' && id!=='usp') return;
+    if(this.currentWeaponId === id) return;
+    this.currentWeaponId = id;
+    this.weapon = SBWeapons[id];
+    this.ammo = this.weapon.magSize;
+    this.reserve = this.weapon.maxReserve;
+    this.isReloading = false;
+  }
+
+  buyWeapon(id){
+    const w = SBWeapons[id];
+    if(!w || this.money < w.price) return false;
+    if(this.owned.has(id)){ this.switchWeapon(id); return true; }
+    this.money -= w.price;
+    this.owned.add(id);
+    this.switchWeapon(id);
+    return true;
+  }
+  buyArmor(type){
+    if(type==='kevlar'){
+      if(this.money < 650) return false;
+      this.money -= 650; this.armor = 100; return true;
+    }
+    if(type==='helmet'){
+      if(this.money < 1000) return false;
+      this.money -= 1000; this.armor = 100; this.hasHelmet = true; return true;
+    }
+    return false;
+  }
+
+  takeDamage(amount){
+    if(!this.isAlive) return;
+    let rem = amount;
+    if(this.armor > 0){
+      const abs = Math.min(this.armor, rem * 0.5);
+      this.armor -= abs; rem -= abs;
+    }
+    this.health -= rem;
+    if(this.health <= 0){ this.health=0; this.die(); }
+  }
+
+  die(){
+    this.isAlive = false;
+    document.getElementById('sbDeath')?.classList.add('show');
+    let c = 3;
+    const el = document.getElementById('sbRespawnCount');
+    if(el) el.textContent = c;
+    const iv = setInterval(()=>{
+      c--; if(el) el.textContent = c;
+      if(c<=0){ clearInterval(iv); this.respawn(); }
+    }, 1000);
+  }
+
+  respawn(){
+    this.isAlive = true;
+    this.health = 100; this.armor = 0; this.hasHelmet = false;
+    this.camera.position.set(0, 1.7, -8);
+    this.velocity.set(0,0,0);
+    this.ammo = this.weapon.magSize;
+    this.reserve = this.weapon.maxReserve;
+    this.isReloading = false;
+    document.getElementById('sbDeath')?.classList.remove('show');
+    SBInput.reset();
+  }
+
+  updateUI(){
+    const hpT = document.getElementById('sbHpText');
+    const hpF = document.getElementById('sbHpFill');
+    const arT = document.getElementById('sbArmorText');
+    const arF = document.getElementById('sbArmorFill');
+    const ac  = document.getElementById('sbAmmoCur');
+    const ar  = document.getElementById('sbAmmoRes');
+    const wn  = document.getElementById('sbWeaponName');
+    const mon = document.getElementById('sbMoney');
+    if(hpT) hpT.textContent = Math.ceil(this.health);
+    if(hpF) hpF.style.width = this.health + '%';
+    if(arT) arT.textContent = Math.ceil(this.armor);
+    if(arF) arF.style.width = this.armor + '%';
+    if(ac)  ac.textContent = this.ammo;
+    if(ar)  ar.textContent = this.reserve;
+    if(wn)  wn.textContent = this.isReloading ? this.weapon.name + ' (перезарядка...)' : this.weapon.name;
+    if(mon) mon.textContent = '$' + this.money;
   }
 }
 
 function sbCreateScene(){
   const scene = new BABYLON.Scene(sbEngine);
-  scene.clearColor = new BABYLON.Color4(0.55, 0.7, 0.85, 1);
-  scene.collisionsEnabled = true;
+  scene.clearColor = new BABYLON.Color4(0.52, 0.68, 0.86, 1);
+  scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+  scene.fogDensity = 0.008;
+  scene.fogColor = new BABYLON.Color3(0.55, 0.7, 0.85);
 
-  const light = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0.4, 1, 0.3), scene);
-  light.intensity = 1.1;
-  const dirLight = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-0.5, -1, 0.4), scene);
-  dirLight.intensity = 0.6;
+  const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.3,1,0.4), scene);
+  hemi.intensity = 0.95;
+  hemi.groundColor = new BABYLON.Color3(0.25,0.25,0.3);
+
+  const dir = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-0.45,-1,0.35), scene);
+  dir.intensity = 0.75;
 
   return scene;
 }
 
 function sbCreateMap(scene){
-  const ground = BABYLON.MeshBuilder.CreateGround('ground', {width:80, height:80}, scene);
-  const groundMat = new BABYLON.StandardMaterial('gmat', scene);
-  groundMat.diffuseColor = new BABYLON.Color3(0.35, 0.38, 0.32);
-  ground.material = groundMat;
-  ground.checkCollisions = true;
+  const ground = BABYLON.MeshBuilder.CreateGround('ground', {width:90, height:90}, scene);
+  const gmat = new BABYLON.StandardMaterial('gmat', scene);
+  gmat.diffuseColor = new BABYLON.Color3(0.32, 0.36, 0.30);
+  gmat.specularColor = new BABYLON.Color3(0.05,0.05,0.05);
+  ground.material = gmat;
 
-  for(let i=0; i<18; i++){
-    const box = BABYLON.MeshBuilder.CreateBox('box'+i, {
-      width: 3 + Math.random()*4,
-      height: 2 + Math.random()*5,
-      depth: 3 + Math.random()*4,
-    }, scene);
-    box.position.x = (Math.random()-0.5) * 60;
-    box.position.z = (Math.random()-0.5) * 60;
-    box.position.y = box.getBoundingInfo().boundingBox.extendSize.y; // ставим ровно на пол
-    box.checkCollisions = true;
-    const mat = new BABYLON.StandardMaterial('bmat'+i, scene);
-    mat.diffuseColor = new BABYLON.Color3(
-      0.4 + Math.random()*0.4,
-      0.4 + Math.random()*0.4,
-      0.4 + Math.random()*0.4,
-    );
-    box.material = mat;
+  const colors = [
+    [0.75,0.35,0.30],[0.30,0.55,0.75],[0.85,0.70,0.25],
+    [0.40,0.70,0.40],[0.55,0.40,0.70],[0.70,0.70,0.70],[0.90,0.55,0.20]
+  ];
+
+  function box(x,y,z,w,h,d,col){
+    const m = BABYLON.MeshBuilder.CreateBox('b', {width:w,height:h,depth:d}, scene);
+    m.position.set(x,y,z);
+    const mat = new BABYLON.StandardMaterial('m'+Math.random(), scene);
+    mat.diffuseColor = new BABYLON.Color3(col[0],col[1],col[2]);
+    mat.specularColor = new BABYLON.Color3(0.08,0.08,0.08);
+    m.material = mat;
+    return m;
+  }
+
+  box(0,1.5,0, 6,3,6, colors[5]);
+  const pos = [
+    [-18,1.5,-12,4,3,8],[-18,1.5,10,4,3,6],[-12,2,0,3,4,3],
+    [18,1.5,-10,4,3,7],[18,1.5,12,4,3,5],[12,2.5,2,3,5,3],
+    [-8,1,-22,5,2,4],[8,1,-22,5,2,4],[-6,1.5,22,4,3,4],[10,1.5,20,6,3,3],
+    [-25,4,0,3,8,3],[25,4,0,3,8,3],
+    [-4,0.8,-6,2.5,1.6,2.5],[5,0.8,7,2.5,1.6,2.5],[0,0.8,12,3,1.6,2],
+    [-10,0.8,8,2,1.6,2],[14,0.8,-5,2,1.6,3]
+  ];
+  pos.forEach((p,i)=> box(p[0],p[1],p[2],p[3],p[4],p[5], colors[i%colors.length]));
+
+  // boundary walls
+  const wallC = [0.25,0.25,0.28];
+  box(0,3,46,92,6,1.5, wallC);
+  box(0,3,-46,92,6,1.5, wallC);
+  box(-46,3,0,1.5,6,92, wallC);
+  box(46,3,0,1.5,6,92, wallC);
+}
+
+function sbToggleBuy(){
+  sbBuyOpen = !sbBuyOpen;
+  const menu = document.getElementById('sbBuyMenu');
+  if(sbBuyOpen){
+    menu?.classList.add('open');
+    document.exitPointerLock();
+  } else {
+    menu?.classList.remove('open');
+    sbCanvas?.requestPointerLock();
   }
 }
 
@@ -3119,11 +3435,32 @@ function initSandboxGame(){
   if(!sbCanvas) return;
   sbStarted = true;
 
-  sbEngine = new BABYLON.Engine(sbCanvas, true, {stencil:true}, true);
+  sbEngine = new BABYLON.Engine(sbCanvas, true, {stencil:true, preserveDrawingBuffer:true}, true);
   sbScene = sbCreateScene();
-  Input.init();
-  sbPlayer = new Player(sbScene);
+  SBInput.init(sbCanvas);
+  sbPlayer = new SBPlayer(sbScene);
   sbCreateMap(sbScene);
+
+  // buy menu buttons
+  document.querySelectorAll('#sbBuyMenu [data-weapon]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      sbPlayer.buyWeapon(btn.getAttribute('data-weapon'));
+    });
+  });
+  document.querySelectorAll('#sbBuyMenu [data-item]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      sbPlayer.buyArmor(btn.getAttribute('data-item'));
+    });
+  });
+  document.getElementById('sbBuyClose')?.addEventListener('click', ()=> sbToggleBuy());
+
+  window.addEventListener('keydown', e=>{
+    if(e.code === 'KeyB' && sbStarted){
+      e.preventDefault();
+      sbToggleBuy();
+    }
+    if(e.code === 'Escape' && sbBuyOpen) sbToggleBuy();
+  });
 
   sbEngine.runRenderLoop(()=>{
     const delta = sbEngine.getDeltaTime() / 1000;
@@ -3133,11 +3470,11 @@ function initSandboxGame(){
 
   window.addEventListener('resize', ()=>{ if(sbEngine) sbEngine.resize(); });
 
-  // Кнопки-крестовина и прыжок на телефоне — просто эмулируют те же клавиши, что и клавиатура.
+  // mobile d-pad
   const bindHold = (el, code)=>{
     if(!el) return;
-    const on = e=>{ e.preventDefault(); Input.set(code, true); };
-    const off = e=>{ e.preventDefault(); Input.set(code, false); };
+    const on  = e=>{ e.preventDefault(); SBInput.set(code, true); };
+    const off = e=>{ e.preventDefault(); SBInput.set(code, false); };
     el.addEventListener('touchstart', on, {passive:false});
     el.addEventListener('touchend', off);
     el.addEventListener('touchcancel', off);
@@ -3150,11 +3487,8 @@ function initSandboxGame(){
 
   document.getElementById('sbFullscreenBtn')?.addEventListener('click', ()=>{
     const wrap = document.getElementById('sbCanvasWrap');
-    if(!document.fullscreenElement){
-      wrap?.requestFullscreen?.().catch(()=>{});
-    } else {
-      document.exitFullscreen?.();
-    }
+    if(!document.fullscreenElement) wrap?.requestFullscreen?.().catch(()=>{});
+    else document.exitFullscreen?.();
     setTimeout(()=> sbEngine?.resize(), 150);
   });
 }
