@@ -624,13 +624,16 @@
       <div class="card" style="margin-bottom:16px;">
         <h3 style="font-size:15px; margin-bottom:10px;">🌍 Угадай расстояние — правила</h3>
         <div class="dg-rules">
-          Каждый раунд — общий для всех игроков. Показываются два города с одного континента и карта с маршрутом
-          между ними — карту можно приближать и отдалять, видно страны и крупные города рядом. Внизу — поле для
-          ответа: впиши на глаз расстояние между городами в километрах и отправь, пока не истекло время раунда.<br><br>
-          <b>Очки:</b> после того как раунд завершится, все ответы сравниваются по точности (кто ближе к реальному
-          расстоянию). Если играешь один — всегда получаешь 1 очко за раунд. Если играющих N человек — самый точный
-          получает N очков, следующий по точности N−1, и так далее вниз до 1 очка у самого неточного ответа.
-          Общий счёт копится по всем раундам — таблица справа (или ниже на телефоне).
+          Каждый раунд — общий для всех игроков, ограничения по времени нет. Показываются два города с одного
+          континента и карта с маршрутом между ними — карту можно приближать и отдалять, видно страны и крупные
+          города рядом. Внизу — поле для ответа: впиши на глаз расстояние между городами в километрах и отправь.<br><br>
+          После своего ответа нажми <b>«Готово, дальше»</b>. Раунд закрывается, когда так сделает каждый, кто успел
+          ответить (если играешь один — просто нажми сам, ждать некого). После этого раунд завершается, показываются
+          ответы всех игроков, и любой может нажать <b>«Следующий раунд»</b>, когда все посмотрели результат.<br><br>
+          <b>Очки:</b> ответы сравниваются по точности (кто ближе к реальному расстоянию). Если играешь один —
+          всегда получаешь 1 очко за раунд. Если играющих N человек — самый точный получает N очков, следующий по
+          точности N−1, и так далее вниз до 1 очка у самого неточного ответа. Общий счёт копится по всем раундам —
+          таблица справа (или ниже на телефоне).
         </div>
       </div>
 
@@ -2617,9 +2620,6 @@ function haversineKm(lat1, lon1, lat2, lon2){
 }
 function fmtKm(n){ return Math.round(n).toLocaleString('ru-RU') + ' км'; }
 
-const DG_ANSWER_MS = 40000;   // время на ответ в раунде
-const DG_RESULTS_MS = 15000;  // сколько показываем результаты перед новым раундом
-
 let dgRound = null;
 let dgAnswers = [];
 let dgStandings = [];
@@ -2652,7 +2652,6 @@ async function createNextDistanceRound(roundNo){
   const {error} = await sb.from('distance_rounds').insert({
     round_no: roundNo, status: 'answering', continent,
     city_a: a, city_b: b, actual_km,
-    answer_deadline: new Date(Date.now()+DG_ANSWER_MS).toISOString(),
   });
   if(error) console.error('distance_rounds insert error:', error.message);
 }
@@ -2680,10 +2679,36 @@ async function submitDistanceGuess(){
   }catch(e){ alert('Не удалось отправить ответ (возможно, уже отвечал в этом раунде): '+e.message); }
 }
 
+// Раунд бессрочный: каждый, кто ответил, жмёт "Готово, дальше" — как только ВСЕ, кто
+// успел ответить, отметились готовыми, раунд закрывается и считаются очки.
+async function markDistanceReady(){
+  if(!dgRound || dgRound.status!=='answering') return;
+  const mine = dgAnswers.find(x=>x.user_id===currentUser.id);
+  if(!mine){ alert('Сначала отправь свой ответ'); return; }
+  const readySet = new Set(dgRound.ready_users||[]);
+  if(readySet.has(currentUser.id)) return;
+  readySet.add(currentUser.id);
+  const {data} = await sb.from('distance_rounds')
+    .update({ready_users:Array.from(readySet)})
+    .eq('id', dgRound.id).eq('status','answering')
+    .select().maybeSingle();
+  if(data) dgRound = data;
+  await checkAllDistanceReady();
+  renderDistanceGame();
+}
+async function checkAllDistanceReady(){
+  if(!dgRound || dgRound.status!=='answering') return;
+  await loadDistanceAnswers();
+  const distinctAnswerers = new Set(dgAnswers.map(a=>a.user_id));
+  const readySet = new Set(dgRound.ready_users||[]);
+  if(distinctAnswerers.size>0 && [...distinctAnswerers].every(id=>readySet.has(id))){
+    await finalizeDistanceRound();
+  }
+}
+
 // Очки: N игроков ответили -> самый точный получает N очков, следующий N-1, ... последний 1 очко.
 async function finalizeDistanceRound(){
   if(!dgRound || dgRound.status!=='answering') return;
-  if(new Date(dgRound.answer_deadline).getTime() > Date.now()) return;
 
   const {data} = await sb.from('distance_rounds')
     .update({status:'finished', finished_at:new Date().toISOString()})
@@ -2713,24 +2738,25 @@ async function finalizeDistanceRound(){
 async function distanceSyncTick(){
   try{
     if(!dgRound) return;
-    if(dgRound.status==='answering'){
-      if(new Date(dgRound.answer_deadline).getTime() <= Date.now()){
-        await finalizeDistanceRound();
-      } else {
-        const {data} = await sb.from('distance_rounds').select('*').eq('id', dgRound.id).maybeSingle();
-        if(data && data.status!==dgRound.status){ dgRound=data; }
-        await loadDistanceAnswers();
-      }
-    } else {
-      const elapsed = Date.now() - new Date(dgRound.finished_at).getTime();
-      if(elapsed > DG_RESULTS_MS){
-        await createNextDistanceRound((dgRound.round_no||0)+1);
-        await loadCurrentDistanceRound();
-        await loadDistanceAnswers();
-        await loadDistanceStandings();
-      }
-    }
+    const {data} = await sb.from('distance_rounds').select('*').eq('id', dgRound.id).maybeSingle();
+    if(data) dgRound = data;
+    await loadDistanceAnswers();
   }catch(e){ console.error('distance sync error', e); }
+  renderDistanceGame();
+}
+
+// Кто-то из игроков вручную запускает следующий раунд после того, как посмотрел результаты —
+// без невидимого таймера, который никому не было видно.
+async function advanceDistanceRound(){
+  if(!dgRound || dgRound.status!=='finished') return;
+  const {data: latest} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(latest && latest.round_no > dgRound.round_no){
+    dgRound = latest; await loadDistanceAnswers(); renderDistanceGame(); return;
+  }
+  await createNextDistanceRound((dgRound.round_no||0)+1);
+  await loadCurrentDistanceRound();
+  await loadDistanceAnswers();
+  await loadDistanceStandings();
   renderDistanceGame();
 }
 
@@ -2779,24 +2805,45 @@ function renderDistanceGame(){
   const myAnswer = dgAnswers.find(x=>x.user_id===currentUser.id);
 
   if(dgRound.status==='answering'){
-    const msLeft = Math.max(0, new Date(dgRound.answer_deadline).getTime() - Date.now());
-    if(statusLabel){ statusLabel.className='horse-status-label open'; statusLabel.textContent = `Осталось ${Math.ceil(msLeft/1000)} сек · ответили ${dgAnswers.length}`; }
+    if(statusLabel){ statusLabel.className='horse-status-label open'; statusLabel.textContent = `Раунд идёт · ответили ${dgAnswers.length}`; }
     if(answerZone){
       if(myAnswer){
-        answerZone.innerHTML = `<div class="dg-submitted">✅ Ты ответил: ${fmtKm(myAnswer.guess_km)} — ждём остальных и конца раунда</div>`;
-      } else {
+        const readySet = new Set(dgRound.ready_users||[]);
+        const iAmReady = readySet.has(currentUser.id);
+        const distinctAnswerers = new Set(dgAnswers.map(x=>x.user_id));
+        const readyCount = [...distinctAnswerers].filter(id=>readySet.has(id)).length;
         answerZone.innerHTML = `
-          <input type="number" id="dgGuessInput" placeholder="Расстояние в км" min="0" step="1">
+          <div class="dg-submitted">✅ Ты ответил: ${fmtKm(myAnswer.guess_km)}</div>
+          ${iAmReady
+            ? `<div class="dg-hint">Готово (${readyCount}/${distinctAnswerers.size}) — ждём остальных, кто ещё отвечает.</div>`
+            : `<button onclick="markDistanceReady()">Готово, дальше ➜</button>
+               <div class="dg-hint">Раунд закроется, когда каждый ответивший нажмёт «Готово». Если играешь один — просто нажми сам.</div>`}
+        `;
+      } else {
+        // Поле ввода перестраивается при каждом опросе сервера — сохраняем то, что человек
+        // уже успел напечатать, и фокус с позицией курсора, иначе ввод "слетает" на каждой цифре.
+        const existingInput = document.getElementById('dgGuessInput');
+        const keepVal = existingInput ? existingInput.value : '';
+        const wasFocused = document.activeElement && document.activeElement.id === 'dgGuessInput';
+        const caret = wasFocused && existingInput ? existingInput.selectionStart : null;
+
+        answerZone.innerHTML = `
+          <input type="number" id="dgGuessInput" placeholder="Расстояние в км" min="0" step="1" value="${keepVal}">
           <button onclick="submitDistanceGuess()">Ответить</button>
           <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
         `;
-        document.getElementById('dgGuessInput')?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
+        const freshInput = document.getElementById('dgGuessInput');
+        freshInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
+        if(wasFocused && freshInput){
+          freshInput.focus();
+          if(caret!==null) freshInput.setSelectionRange?.(caret, caret);
+        }
       }
     }
     if(resultsEl) resultsEl.innerHTML='';
   } else {
-    if(statusLabel){ statusLabel.className='horse-status-label'; statusLabel.textContent = 'Раунд завершён — следующий скоро'; }
-    if(answerZone) answerZone.innerHTML = '';
+    if(statusLabel){ statusLabel.className='horse-status-label'; statusLabel.textContent = 'Раунд завершён'; }
+    if(answerZone) answerZone.innerHTML = `<button onclick="advanceDistanceRound()">Следующий раунд ➜</button>`;
     if(resultsEl){
       const sorted = [...dgAnswers].sort((x,y)=> Math.abs(x.guess_km-dgRound.actual_km) - Math.abs(y.guess_km-dgRound.actual_km));
       resultsEl.innerHTML = `
