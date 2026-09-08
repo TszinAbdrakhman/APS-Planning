@@ -2747,17 +2747,26 @@ async function distanceSyncTick(){
 
 // Кто-то из игроков вручную запускает следующий раунд после того, как посмотрел результаты —
 // без невидимого таймера, который никому не было видно.
+let dgAdvancing = false;
 async function advanceDistanceRound(){
   if(!dgRound || dgRound.status!=='finished') return;
-  const {data: latest} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
-  if(latest && latest.round_no > dgRound.round_no){
-    dgRound = latest; await loadDistanceAnswers(); renderDistanceGame(); return;
+  if(dgAdvancing) return; // защита от повторного клика, пока предыдущий переход ещё не завершился
+  dgAdvancing = true;
+  const btn = document.querySelector('#dgAnswerZone button');
+  if(btn){ btn.disabled = true; btn.textContent = 'Переходим...'; }
+  try{
+    const {data: latest} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(latest && latest.round_no > dgRound.round_no){
+      dgRound = latest; await loadDistanceAnswers(); renderDistanceGame(); return;
+    }
+    await createNextDistanceRound((dgRound.round_no||0)+1);
+    await loadCurrentDistanceRound();
+    await loadDistanceAnswers();
+    await loadDistanceStandings();
+    renderDistanceGame();
+  } finally {
+    dgAdvancing = false;
   }
-  await createNextDistanceRound((dgRound.round_no||0)+1);
-  await loadCurrentDistanceRound();
-  await loadDistanceAnswers();
-  await loadDistanceStandings();
-  renderDistanceGame();
 }
 
 // Карта строится только когда вкладка реально видима (иначе Leaflet посчитает размер 0x0).
