@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
 <style>
   :root{
     --ink:#1B1F3B; --paper:#EDEEF0; --card:#FFFFFF;
@@ -376,6 +377,26 @@
   .dg-standing-row .dg-rounds{color:var(--muted); font-size:11px;}
   .dg-standing-row .dg-total{font-family:'IBM Plex Mono',monospace; font-weight:700;}
 
+  /* ---- 3D SANDBOX ---- */
+  .sb-card{padding:0; overflow:hidden;}
+  .sb-canvas-wrap{position:relative; width:100%; height:520px; background:#8fb3d9; border-radius:12px; overflow:hidden;}
+  .sb-canvas-wrap:fullscreen{height:100vh; border-radius:0;}
+  #sbCanvas{width:100%; height:100%; display:block; touch-action:none; outline:none;}
+  .sb-dpad{position:absolute; left:14px; bottom:14px; z-index:3; display:grid; grid-template-columns:44px 44px 44px; grid-template-rows:44px 44px 44px; gap:4px; user-select:none;}
+  .sb-btn{grid-column:2; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); border-radius:8px; font-size:16px; font-weight:700; color:var(--ink); touch-action:none;}
+  .sb-up{grid-row:1;}
+  .sb-left{grid-row:2; grid-column:1;}
+  .sb-down{grid-row:2; grid-column:2;}
+  .sb-right{grid-row:2; grid-column:3;}
+  .sb-jump{position:absolute; right:14px; bottom:14px; z-index:3; width:64px; height:64px; border-radius:50%; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:11.5px; touch-action:none;}
+  .sb-fullscreen{position:absolute; right:14px; top:14px; z-index:3; width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.15); font-size:16px; line-height:1;}
+  @media (max-width:700px){
+    .sb-canvas-wrap{height:60vh; min-height:360px;}
+  }
+  @media (min-width:701px){
+    .sb-dpad, .sb-jump{ display:none; } /* на десктопе — клавиатура и мышь */
+  }
+
   /* ---- MEMOS ---- */
   .memo-textarea{
     width:100%; min-height:64px; font-family:'IBM Plex Sans', sans-serif; font-size:13px;
@@ -528,6 +549,7 @@
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
     <button class="tab" data-tab="distance">Расстояния 🌍</button>
+    <button class="tab" data-tab="sandbox">Песочница 🧱</button>
   </div>
 
   <div id="loading" class="loading">Загрузка данных...</div>
@@ -656,6 +678,31 @@
             <h3 style="font-size:14px; margin-bottom:10px;">🏆 Общий счёт</h3>
             <div id="dgStandings"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3D SANDBOX -->
+    <div class="panel" id="panel-sandbox">
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; margin-bottom:8px;">🧱 Песочница — как играть</h3>
+        <div class="dg-rules">
+          Простой 3D-мир с коробками, по которому можно погулять. Управление с клавиатуры:
+          <b>W A S D</b> или стрелки — ходьба, <b>пробел</b> — прыжок, зажатая левая кнопка мыши — покрутить камеру,
+          колесо мыши — приблизить/отдалить. На телефоне снизу появятся кнопки движения и джойстик камеры (свайп по экрану).
+        </div>
+      </div>
+      <div class="card sb-card">
+        <div class="sb-canvas-wrap" id="sbCanvasWrap">
+          <canvas id="sbCanvas"></canvas>
+          <div class="sb-dpad" id="sbDpad">
+            <button type="button" class="sb-btn sb-up" data-key="KeyW">▲</button>
+            <button type="button" class="sb-btn sb-left" data-key="KeyA">◀</button>
+            <button type="button" class="sb-btn sb-down" data-key="KeyS">▼</button>
+            <button type="button" class="sb-btn sb-right" data-key="KeyD">▶</button>
+          </div>
+          <button type="button" class="sb-jump" id="sbJumpBtn">Прыжок</button>
+          <button type="button" class="sb-fullscreen" id="sbFullscreenBtn">⛶</button>
         </div>
       </div>
     </div>
@@ -2935,6 +2982,183 @@ async function initDistanceGame(){
   dgSyncTimer = setInterval(distanceSyncTick, 1500);
 }
 
+/* ============ ПЕСОЧНИЦА 3D (Babylon.js) ============ */
+let sbCanvas, sbEngine, sbScene, sbPlayer;
+let sbStarted = false;
+
+// Клавиатура + сенсорные кнопки пишут в один и тот же набор "нажатых клавиш",
+// поэтому Player.update() не знает и не должен знать, откуда пришло нажатие.
+const Input = {
+  keys: {},
+  init(){
+    if(this._inited) return;
+    this._inited = true;
+    window.addEventListener('keydown', e=>{ this.keys[e.code] = true; });
+    window.addEventListener('keyup', e=>{ this.keys[e.code] = false; });
+  },
+  isDown(code){ return !!this.keys[code]; },
+  set(code, val){ this.keys[code] = val; },
+};
+
+class Player {
+  constructor(scene){
+    this.scene = scene;
+
+    this.mesh = BABYLON.MeshBuilder.CreateCapsule('player', {height:1.8, radius:0.4}, scene);
+    this.mesh.position = new BABYLON.Vector3(0, 6, 0);
+    this.mesh.ellipsoid = new BABYLON.Vector3(0.4, 0.9, 0.4);
+    this.mesh.ellipsoidOffset = new BABYLON.Vector3(0, 0.9, 0);
+    this.mesh.checkCollisions = true;
+    this.mesh.isPickable = false;
+    const mat = new BABYLON.StandardMaterial('pmat', scene);
+    mat.diffuseColor = new BABYLON.Color3(0.91, 0.56, 0.22);
+    this.mesh.material = mat;
+
+    this.camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 1.15, 14, this.mesh.position.clone(), scene);
+    this.camera.lowerRadiusLimit = 5;
+    this.camera.upperRadiusLimit = 26;
+    this.camera.lowerBetaLimit = 0.25;
+    this.camera.upperBetaLimit = Math.PI/2.05;
+    this.camera.wheelPrecision = 35;
+    this.camera.panningSensibility = 0;
+    this.camera.attachControl(scene.getEngine().getRenderingCanvas(), true);
+    scene.activeCamera = this.camera;
+
+    this.velocityY = 0;
+    this.speed = 8;
+    this.gravity = -22;
+    this.jumpPower = 9;
+    this.grounded = false;
+  }
+
+  update(dt){
+    dt = Math.min(dt, 0.05); // защита от огромного скачка dt при переключении вкладок
+
+    const forward = this.camera.getDirection(BABYLON.Vector3.Forward());
+    forward.y = 0;
+    if(forward.lengthSquared() > 0.0001) forward.normalize();
+    const right = BABYLON.Vector3.Cross(BABYLON.Vector3.Up(), forward);
+    if(right.lengthSquared() > 0.0001) right.normalize();
+
+    let move = BABYLON.Vector3.Zero();
+    if(Input.isDown('KeyW') || Input.isDown('ArrowUp'))    move.addInPlace(forward);
+    if(Input.isDown('KeyS') || Input.isDown('ArrowDown'))  move.subtractInPlace(forward);
+    if(Input.isDown('KeyD') || Input.isDown('ArrowRight')) move.addInPlace(right);
+    if(Input.isDown('KeyA') || Input.isDown('ArrowLeft'))  move.subtractInPlace(right);
+    if(move.lengthSquared() > 0) move.normalize().scaleInPlace(this.speed * dt);
+
+    this.velocityY += this.gravity * dt;
+    if(this.velocityY < -40) this.velocityY = -40;
+    move.y = this.velocityY * dt;
+
+    const beforeY = this.mesh.position.y;
+    this.mesh.moveWithCollisions(move);
+
+    // Если вертикальное перемещение почти остановилось коллизией, пока падали — значит, на земле.
+    const actualDy = this.mesh.position.y - beforeY;
+    this.grounded = this.velocityY < 0 && Math.abs(actualDy - move.y) > 0.001;
+    if(this.grounded) this.velocityY = 0;
+
+    if(Input.isDown('Space') && this.grounded){
+      this.velocityY = this.jumpPower;
+      this.grounded = false;
+    }
+
+    this.camera.target.copyFrom(this.mesh.position);
+
+    if(this.mesh.position.y < -25){ // упал за карту — вернуть на старт
+      this.mesh.position.set(0, 6, 0);
+      this.velocityY = 0;
+    }
+  }
+}
+
+function sbCreateScene(){
+  const scene = new BABYLON.Scene(sbEngine);
+  scene.clearColor = new BABYLON.Color4(0.55, 0.7, 0.85, 1);
+  scene.collisionsEnabled = true;
+
+  const light = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0.4, 1, 0.3), scene);
+  light.intensity = 1.1;
+  const dirLight = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-0.5, -1, 0.4), scene);
+  dirLight.intensity = 0.6;
+
+  return scene;
+}
+
+function sbCreateMap(scene){
+  const ground = BABYLON.MeshBuilder.CreateGround('ground', {width:80, height:80}, scene);
+  const groundMat = new BABYLON.StandardMaterial('gmat', scene);
+  groundMat.diffuseColor = new BABYLON.Color3(0.35, 0.38, 0.32);
+  ground.material = groundMat;
+  ground.checkCollisions = true;
+
+  for(let i=0; i<18; i++){
+    const box = BABYLON.MeshBuilder.CreateBox('box'+i, {
+      width: 3 + Math.random()*4,
+      height: 2 + Math.random()*5,
+      depth: 3 + Math.random()*4,
+    }, scene);
+    box.position.x = (Math.random()-0.5) * 60;
+    box.position.z = (Math.random()-0.5) * 60;
+    box.position.y = box.getBoundingInfo().boundingBox.extendSize.y; // ставим ровно на пол
+    box.checkCollisions = true;
+    const mat = new BABYLON.StandardMaterial('bmat'+i, scene);
+    mat.diffuseColor = new BABYLON.Color3(
+      0.4 + Math.random()*0.4,
+      0.4 + Math.random()*0.4,
+      0.4 + Math.random()*0.4,
+    );
+    box.material = mat;
+  }
+}
+
+function initSandboxGame(){
+  if(sbStarted) return;
+  sbCanvas = document.getElementById('sbCanvas');
+  if(!sbCanvas) return;
+  sbStarted = true;
+
+  sbEngine = new BABYLON.Engine(sbCanvas, true, {stencil:true}, true);
+  sbScene = sbCreateScene();
+  Input.init();
+  sbPlayer = new Player(sbScene);
+  sbCreateMap(sbScene);
+
+  sbEngine.runRenderLoop(()=>{
+    const delta = sbEngine.getDeltaTime() / 1000;
+    sbPlayer.update(delta);
+    sbScene.render();
+  });
+
+  window.addEventListener('resize', ()=>{ if(sbEngine) sbEngine.resize(); });
+
+  // Кнопки-крестовина и прыжок на телефоне — просто эмулируют те же клавиши, что и клавиатура.
+  const bindHold = (el, code)=>{
+    if(!el) return;
+    const on = e=>{ e.preventDefault(); Input.set(code, true); };
+    const off = e=>{ e.preventDefault(); Input.set(code, false); };
+    el.addEventListener('touchstart', on, {passive:false});
+    el.addEventListener('touchend', off);
+    el.addEventListener('touchcancel', off);
+    el.addEventListener('mousedown', on);
+    el.addEventListener('mouseup', off);
+    el.addEventListener('mouseleave', off);
+  };
+  document.querySelectorAll('#sbDpad .sb-btn').forEach(btn=> bindHold(btn, btn.dataset.key));
+  bindHold(document.getElementById('sbJumpBtn'), 'Space');
+
+  document.getElementById('sbFullscreenBtn')?.addEventListener('click', ()=>{
+    const wrap = document.getElementById('sbCanvasWrap');
+    if(!document.fullscreenElement){
+      wrap?.requestFullscreen?.().catch(()=>{});
+    } else {
+      document.exitFullscreen?.();
+    }
+    setTimeout(()=> sbEngine?.resize(), 150);
+  });
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -2943,6 +3167,7 @@ function initApp(){
       t.classList.add('active');
       document.getElementById('panel-'+t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='distance'){ dgRenderMap(); }
+      if(t.dataset.tab==='sandbox'){ initSandboxGame(); setTimeout(()=> sbEngine?.resize(), 50); }
     };
   });
   document.querySelectorAll('.sup-subtab').forEach(t=>{
