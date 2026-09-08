@@ -1662,7 +1662,7 @@ function renderHorseGame(){
         ${[100,200,500,1000].map(v=>`<button type="button" class="ghost" onclick="setBetAmount(${v})">${v}</button>`).join('')}
       </div>
       <div class="form-row">
-        <input type="number" id="betAmount" min="100" max="10000" step="100" value="${keepAmount}" style="width:120px;">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="betAmount" value="${keepAmount}" style="width:120px;">
         <button onclick="placeBet()">Поставить</button>
         ${readyBtnHtml}
       </div>
@@ -2829,23 +2829,17 @@ function renderDistanceGame(){
                <div class="dg-hint">Раунд закроется, когда каждый ответивший нажмёт «Готово». Если играешь один — просто нажми сам.</div>`}
         `;
       } else {
-        // Поле ввода перестраивается при каждом опросе сервера — сохраняем то, что человек
-        // уже успел напечатать, и фокус с позицией курсора, иначе ввод "слетает" на каждой цифре.
-        const existingInput = document.getElementById('dgGuessInput');
-        const keepVal = existingInput ? existingInput.value : '';
-        const wasFocused = document.activeElement && document.activeElement.id === 'dgGuessInput';
-        const caret = wasFocused && existingInput ? existingInput.selectionStart : null;
-
-        answerZone.innerHTML = `
-          <input type="number" id="dgGuessInput" placeholder="Расстояние в км" min="0" step="1" value="${keepVal}">
-          <button onclick="submitDistanceGuess()">Ответить</button>
-          <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
-        `;
-        const freshInput = document.getElementById('dgGuessInput');
-        freshInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
-        if(wasFocused && freshInput){
-          freshInput.focus();
-          if(caret!==null) freshInput.setSelectionRange?.(caret, caret);
+        // Пока ответа ещё нет, а поле ввода уже на экране — вообще не трогаем DOM здесь.
+        // Раньше на каждый опрос сервера (~1.5с) поле пересоздавалось заново, и курсор
+        // у type="number" сбрасывался в начало — цифры вставлялись задом наперёд.
+        if(!document.getElementById('dgGuessInput')){
+          answerZone.innerHTML = `
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="dgGuessInput" placeholder="Расстояние в км">
+            <button onclick="submitDistanceGuess()">Ответить</button>
+            <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
+          `;
+          const freshInput = document.getElementById('dgGuessInput');
+          freshInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
         }
       }
     }
