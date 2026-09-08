@@ -624,16 +624,17 @@
       <div class="card" style="margin-bottom:16px;">
         <h3 style="font-size:15px; margin-bottom:10px;">🌍 Угадай расстояние — правила</h3>
         <div class="dg-rules">
-          Каждый раунд — общий для всех игроков, ограничения по времени нет. Показываются два города с одного
-          континента и карта с маршрутом между ними — карту можно приближать и отдалять, видно страны и крупные
-          города рядом. Внизу — поле для ответа: впиши на глаз расстояние между городами в километрах и отправь.<br><br>
-          После своего ответа нажми <b>«Готово, дальше»</b>. Раунд закрывается, когда так сделает каждый, кто успел
-          ответить (если играешь один — просто нажми сам, ждать некого). После этого раунд завершается, показываются
-          ответы всех игроков, и любой может нажать <b>«Следующий раунд»</b>, когда все посмотрели результат.<br><br>
-          <b>Очки:</b> ответы сравниваются по точности (кто ближе к реальному расстоянию). Если играешь один —
-          всегда получаешь 1 очко за раунд. Если играющих N человек — самый точный получает N очков, следующий по
-          точности N−1, и так далее вниз до 1 очка у самого неточного ответа. Общий счёт копится по всем раундам —
-          таблица справа (или ниже на телефоне).
+          У каждого игрока — свой личный прогресс: все начинают с раунда №1 и идут дальше в своём темпе,
+          не дожидаясь остальных. Содержимое раунда с одним и тем же номером у всех одинаковое — те же два
+          города, та же карта с маршрутом между ними (можно приближать и отдалять, видно страны и крупные
+          города рядом). Внизу — поле для ответа: впиши на глаз расстояние между городами в километрах и отправь.<br><br>
+          После ответа увидишь, кто ещё отвечал на этот же раунд и с каким результатом, и сможешь нажать
+          <b>«Следующий раунд»</b>, когда будешь готов — никто тебя не ждёт и ты никого не ждёшь.<br><br>
+          <b>Очки:</b> ответы на один и тот же раунд сравниваются по точности (кто ближе к реальному расстоянию).
+          Если на раунд пока ответил только ты — получаешь 1 очко. Если на этот же раунд позже ответит кто-то ещё
+          и окажется точнее — баллы обоих честно пересчитаются: например, было 1 у тебя, станет 2 у тебя (если
+          ты точнее) и 1 у него. Общий счёт по всем раундам — таблица справа (или ниже на телефоне), там же видно,
+          на каком раунде сейчас каждый игрок.
         </div>
       </div>
 
@@ -2620,8 +2621,9 @@ function haversineKm(lat1, lon1, lat2, lon2){
 }
 function fmtKm(n){ return Math.round(n).toLocaleString('ru-RU') + ' км'; }
 
-let dgRound = null;
-let dgAnswers = [];
+let dgMyRoundNo = 1;   // на каком раунде лично я — у каждого игрока свой номер, начиная с 1
+let dgRound = null;    // содержимое текущего для меня раунда (город A/B, реальное расстояние)
+let dgAnswers = [];    // все ответы на этот конкретный round_no (от любых игроков, для сравнения)
 let dgStandings = [];
 let dgSyncTimer = null;
 let dgMap = null, dgMapLayer = null;
@@ -2636,25 +2638,40 @@ function pickDistanceCities(){
   return {continent, a, b};
 }
 
-async function loadCurrentDistanceRound(){
-  let {data, error} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
-  if(error){ console.error('distance_rounds select error (проверь, что миграция distance_game_migration.sql выполнена в Supabase):', error.message); }
+// Содержимое раунда №N одинаковое для всех игроков (город A/B, реальное расстояние) — это
+// общий "каталог" раундов. Личный прогресс (на каком номере сейчас конкретный игрок) — отдельно.
+async function loadMyProgress(){
+  let {data, error} = await sb.from('distance_progress').select('*').eq('user_id', currentUser.id).maybeSingle();
+  if(error){ console.error('distance_progress select error (проверь миграцию distance_game_migration_v4.sql):', error.message); }
   if(!data){
-    await createNextDistanceRound(1);
-    ({data, error} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle());
-    if(error){ console.error('distance_rounds select error:', error.message); }
+    const {data: created, error: insErr} = await sb.from('distance_progress')
+      .insert({user_id: currentUser.id, current_round_no: 1}).select().maybeSingle();
+    if(insErr) console.error('distance_progress insert error:', insErr.message);
+    data = created || {user_id: currentUser.id, current_round_no: 1};
   }
-  dgRound = data;
+  dgMyRoundNo = data.current_round_no || 1;
 }
-async function createNextDistanceRound(roundNo){
+
+// Раунд с таким номером мог уже создать кто-то другой (он же общий контент на всех) —
+// сначала пробуем найти, и только если его правда ни у кого ещё не было, создаём.
+async function ensureRoundContent(roundNo){
+  let {data} = await sb.from('distance_rounds').select('*').eq('round_no', roundNo).maybeSingle();
+  if(data){ dgRound = data; return; }
+
   const {a, b, continent} = pickDistanceCities();
   const actual_km = haversineKm(a.lat, a.lon, b.lat, b.lon);
-  const {error} = await sb.from('distance_rounds').insert({
-    round_no: roundNo, status: 'answering', continent,
-    city_a: a, city_b: b, actual_km,
-  });
-  if(error) console.error('distance_rounds insert error:', error.message);
+  const {data: inserted, error} = await sb.from('distance_rounds')
+    .insert({round_no: roundNo, continent, city_a:a, city_b:b, actual_km})
+    .select().maybeSingle();
+
+  if(inserted){ dgRound = inserted; return; }
+  // Кто-то создал этот же номер раунда на долю секунды раньше нас — просто берём его версию.
+  if(error) {
+    const {data: existing} = await sb.from('distance_rounds').select('*').eq('round_no', roundNo).maybeSingle();
+    dgRound = existing;
+  }
 }
+
 async function loadDistanceAnswers(){
   dgAnswers = [];
   if(!dgRound) return;
@@ -2662,105 +2679,86 @@ async function loadDistanceAnswers(){
   dgAnswers = data || [];
 }
 async function loadDistanceStandings(){
-  const {data} = await sb.from('distance_scores').select('user_id,total_points,rounds_played').order('total_points',{ascending:false}).limit(30);
-  dgStandings = data || [];
+  const [{data: scores}, {data: progress}] = await Promise.all([
+    sb.from('distance_scores').select('user_id,total_points,rounds_played'),
+    sb.from('distance_progress').select('user_id,current_round_no'),
+  ]);
+  const progressByUser = {};
+  (progress||[]).forEach(p=> progressByUser[p.user_id] = p.current_round_no);
+  dgStandings = (scores||[])
+    .map(s=> ({...s, current_round_no: progressByUser[s.user_id] || 1}))
+    .sort((x,y)=> y.total_points - x.total_points);
 }
 
 async function submitDistanceGuess(){
   const input = document.getElementById('dgGuessInput');
   const val = parseFloat((input?.value||'').replace(',','.'));
-  if(!dgRound || dgRound.status!=='answering') return;
+  if(!dgRound) return;
   if(!val || val<=0){ alert('Введи расстояние в километрах'); return; }
   try{
     const {error} = await sb.from('distance_answers').insert({round_id:dgRound.id, user_id:currentUser.id, guess_km:val});
     if(error) throw error;
+
+    // Мой персональный прогресс по "сыграно раундов" растёт сразу — очки за раунд посчитаются
+    // (и при необходимости пересчитаются) в recomputeRoundScores.
+    const {data: existingScore} = await sb.from('distance_scores').select('total_points,rounds_played').eq('user_id', currentUser.id).maybeSingle();
+    await sb.from('distance_scores').upsert({
+      user_id: currentUser.id,
+      total_points: existingScore?.total_points || 0,
+      rounds_played: (existingScore?.rounds_played||0) + 1,
+      updated_at: new Date().toISOString(),
+    });
+
+    await recomputeRoundScores(dgRound.id, dgRound.actual_km);
     await loadDistanceAnswers();
+    await loadDistanceStandings();
     renderDistanceGame();
   }catch(e){ alert('Не удалось отправить ответ (возможно, уже отвечал в этом раунде): '+e.message); }
 }
 
-// Раунд бессрочный: каждый, кто ответил, жмёт "Готово, дальше" — как только ВСЕ, кто
-// успел ответить, отметились готовыми, раунд закрывается и считаются очки.
-async function markDistanceReady(){
-  if(!dgRound || dgRound.status!=='answering') return;
-  const mine = dgAnswers.find(x=>x.user_id===currentUser.id);
-  if(!mine){ alert('Сначала отправь свой ответ'); return; }
-  const readySet = new Set(dgRound.ready_users||[]);
-  if(readySet.has(currentUser.id)) return;
-  readySet.add(currentUser.id);
-  const {data} = await sb.from('distance_rounds')
-    .update({ready_users:Array.from(readySet)})
-    .eq('id', dgRound.id).eq('status','answering')
-    .select().maybeSingle();
-  if(data) dgRound = data;
-  await checkAllDistanceReady();
-  renderDistanceGame();
-}
-async function checkAllDistanceReady(){
-  if(!dgRound || dgRound.status!=='answering') return;
-  await loadDistanceAnswers();
-  const distinctAnswerers = new Set(dgAnswers.map(a=>a.user_id));
-  const readySet = new Set(dgRound.ready_users||[]);
-  if(distinctAnswerers.size>0 && [...distinctAnswerers].every(id=>readySet.has(id))){
-    await finalizeDistanceRound();
+// Очки раунда пересчитываются каждый раз, когда кто-то новый отвечает на тот же round_no —
+// поэтому если играл один (1 балл), а потом присоединился второй игрок и оказался точнее,
+// баллы обоих honestly пересчитываются: точному больше, менее точному — меньше.
+async function recomputeRoundScores(roundId, actualKm){
+  const {data: answers} = await sb.from('distance_answers').select('*').eq('round_id', roundId);
+  if(!answers || answers.length===0) return;
+  const n = answers.length;
+  const sorted = [...answers].sort((x,y)=> Math.abs(x.guess_km-actualKm) - Math.abs(y.guess_km-actualKm));
+  for(let i=0;i<sorted.length;i++){
+    const newPoints = n - i;
+    const oldPoints = sorted[i].points || 0;
+    if(newPoints === oldPoints) continue;
+    await sb.from('distance_answers').update({points:newPoints}).eq('id', sorted[i].id);
+    const delta = newPoints - oldPoints;
+    const {data: scoreRow} = await sb.from('distance_scores').select('total_points').eq('user_id', sorted[i].user_id).maybeSingle();
+    const newTotal = (scoreRow?.total_points || 0) + delta;
+    await sb.from('distance_scores').upsert({user_id: sorted[i].user_id, total_points:newTotal, updated_at:new Date().toISOString()});
   }
 }
 
-// Очки: N игроков ответили -> самый точный получает N очков, следующий N-1, ... последний 1 очко.
-async function finalizeDistanceRound(){
-  if(!dgRound || dgRound.status!=='answering') return;
-
-  const {data} = await sb.from('distance_rounds')
-    .update({status:'finished', finished_at:new Date().toISOString()})
-    .eq('id', dgRound.id).eq('status','answering')
-    .select().maybeSingle();
-  if(!data){ await loadCurrentDistanceRound(); await loadDistanceAnswers(); renderDistanceGame(); return; }
-  dgRound = data;
-
-  await loadDistanceAnswers();
-  const n = dgAnswers.length;
-  if(n>0){
-    const sorted = [...dgAnswers].sort((x,y)=> Math.abs(x.guess_km-dgRound.actual_km) - Math.abs(y.guess_km-dgRound.actual_km));
-    for(let i=0;i<sorted.length;i++){
-      const points = n - i;
-      await sb.from('distance_answers').update({points}).eq('id', sorted[i].id);
-      const {data: existing} = await sb.from('distance_scores').select('total_points,rounds_played').eq('user_id', sorted[i].user_id).maybeSingle();
-      const newTotal = (existing?.total_points||0) + points;
-      const newRounds = (existing?.rounds_played||0) + 1;
-      await sb.from('distance_scores').upsert({user_id:sorted[i].user_id, total_points:newTotal, rounds_played:newRounds, updated_at:new Date().toISOString()});
-    }
-  }
-  await loadDistanceAnswers();
-  await loadDistanceStandings();
-  renderDistanceGame();
-}
-
+// Периодически подтягиваем чужие ответы на ТОТ ЖЕ round_no, что и у меня — вдруг кто-то
+// ответил позже меня и баллы за этот раунд у всех честно пересчитались.
 async function distanceSyncTick(){
   try{
     if(!dgRound) return;
-    const {data} = await sb.from('distance_rounds').select('*').eq('id', dgRound.id).maybeSingle();
-    if(data) dgRound = data;
+    const prevCount = dgAnswers.length;
     await loadDistanceAnswers();
+    if(dgAnswers.length !== prevCount) await loadDistanceStandings();
   }catch(e){ console.error('distance sync error', e); }
   renderDistanceGame();
 }
 
-// Кто-то из игроков вручную запускает следующий раунд после того, как посмотрел результаты —
-// без невидимого таймера, который никому не было видно.
 let dgAdvancing = false;
 async function advanceDistanceRound(){
-  if(!dgRound || dgRound.status!=='finished') return;
-  if(dgAdvancing) return; // защита от повторного клика, пока предыдущий переход ещё не завершился
+  if(dgAdvancing) return;
   dgAdvancing = true;
   const btn = document.querySelector('#dgAnswerZone button');
   if(btn){ btn.disabled = true; btn.textContent = 'Переходим...'; }
   try{
-    const {data: latest} = await sb.from('distance_rounds').select('*').order('created_at',{ascending:false}).limit(1).maybeSingle();
-    if(latest && latest.round_no > dgRound.round_no){
-      dgRound = latest; await loadDistanceAnswers(); renderDistanceGame(); return;
-    }
-    await createNextDistanceRound((dgRound.round_no||0)+1);
-    await loadCurrentDistanceRound();
+    const nextRoundNo = dgMyRoundNo + 1;
+    await sb.from('distance_progress').update({current_round_no: nextRoundNo, updated_at:new Date().toISOString()}).eq('user_id', currentUser.id);
+    dgMyRoundNo = nextRoundNo;
+    await ensureRoundContent(dgMyRoundNo);
     await loadDistanceAnswers();
     await loadDistanceStandings();
     renderDistanceGame();
@@ -2805,7 +2803,7 @@ function renderDistanceGame(){
   const standingsEl = document.getElementById('dgStandings');
   if(!dgRound){ if(statusLabel) statusLabel.textContent='Загрузка...'; return; }
 
-  if(roundLabel) roundLabel.textContent = `Раунд №${dgRound.round_no}`;
+  if(roundLabel) roundLabel.textContent = `Твой раунд №${dgMyRoundNo}`;
   const a = dgRound.city_a, b = dgRound.city_b;
   if(questionEl) questionEl.textContent = `Какое расстояние между городами ${a.name} (${a.country}) и ${b.name} (${b.country})?`;
 
@@ -2813,55 +2811,41 @@ function renderDistanceGame(){
 
   const myAnswer = dgAnswers.find(x=>x.user_id===currentUser.id);
 
-  if(dgRound.status==='answering'){
-    if(statusLabel){ statusLabel.className='horse-status-label open'; statusLabel.textContent = `Раунд идёт · ответили ${dgAnswers.length}`; }
+  if(!myAnswer){
+    if(statusLabel){ statusLabel.className='horse-status-label open'; statusLabel.textContent = `Ответили на этот раунд: ${dgAnswers.length}`; }
     if(answerZone){
-      if(myAnswer){
-        const readySet = new Set(dgRound.ready_users||[]);
-        const iAmReady = readySet.has(currentUser.id);
-        const distinctAnswerers = new Set(dgAnswers.map(x=>x.user_id));
-        const readyCount = [...distinctAnswerers].filter(id=>readySet.has(id)).length;
+      // Пока ответа ещё нет, а поле ввода уже на экране — вообще не трогаем DOM здесь.
+      // Раньше на каждый опрос сервера поле пересоздавалось заново, и курсор сбрасывался
+      // в начало — цифры вставлялись задом наперёд.
+      if(!document.getElementById('dgGuessInput')){
         answerZone.innerHTML = `
-          <div class="dg-submitted">✅ Ты ответил: ${fmtKm(myAnswer.guess_km)}</div>
-          ${iAmReady
-            ? `<div class="dg-hint">Готово (${readyCount}/${distinctAnswerers.size}) — ждём остальных, кто ещё отвечает.</div>`
-            : `<button onclick="markDistanceReady()">Готово, дальше ➜</button>
-               <div class="dg-hint">Раунд закроется, когда каждый ответивший нажмёт «Готово». Если играешь один — просто нажми сам.</div>`}
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="dgGuessInput" placeholder="Расстояние в км">
+          <button onclick="submitDistanceGuess()">Ответить</button>
+          <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
         `;
-      } else {
-        // Пока ответа ещё нет, а поле ввода уже на экране — вообще не трогаем DOM здесь.
-        // Раньше на каждый опрос сервера (~1.5с) поле пересоздавалось заново, и курсор
-        // у type="number" сбрасывался в начало — цифры вставлялись задом наперёд.
-        if(!document.getElementById('dgGuessInput')){
-          answerZone.innerHTML = `
-            <input type="text" inputmode="numeric" pattern="[0-9]*" id="dgGuessInput" placeholder="Расстояние в км">
-            <button onclick="submitDistanceGuess()">Ответить</button>
-            <div class="dg-hint">Пример: если думаешь, что это 3500 км — так и впиши.</div>
-          `;
-          const freshInput = document.getElementById('dgGuessInput');
-          freshInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
-        }
+        const freshInput = document.getElementById('dgGuessInput');
+        freshInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') submitDistanceGuess(); });
       }
     }
     if(resultsEl) resultsEl.innerHTML='';
   } else {
-    if(statusLabel){ statusLabel.className='horse-status-label'; statusLabel.textContent = 'Раунд завершён'; }
+    if(statusLabel){ statusLabel.className='horse-status-label'; statusLabel.textContent = 'Ты ответил на этот раунд'; }
     if(answerZone) answerZone.innerHTML = `<button onclick="advanceDistanceRound()">Следующий раунд ➜</button>`;
     if(resultsEl){
       const sorted = [...dgAnswers].sort((x,y)=> Math.abs(x.guess_km-dgRound.actual_km) - Math.abs(y.guess_km-dgRound.actual_km));
       resultsEl.innerHTML = `
         <div class="dg-actual">Настоящее расстояние: <b>${fmtKm(dgRound.actual_km)}</b></div>
-        ${sorted.length===0 ? `<div class="empty">Никто не успел ответить в этом раунде.</div>` :
-          sorted.map((row,i)=>{
-            const isMe = row.user_id===currentUser.id;
-            const err = Math.abs(row.guess_km - dgRound.actual_km);
-            return `<div class="dg-row ${isMe?'me':''}">
-              <span class="dg-rank">#${i+1}</span>
-              <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span style="color:var(--muted);">· погрешность ${fmtKm(err)}</span></span>
-              <span class="dg-guess">${fmtKm(row.guess_km)}</span>
-              <span class="dg-pts">+${row.points||0}</span>
-            </div>`;
-          }).join('')}
+        ${sorted.map((row,i)=>{
+          const isMe = row.user_id===currentUser.id;
+          const err = Math.abs(row.guess_km - dgRound.actual_km);
+          return `<div class="dg-row ${isMe?'me':''}">
+            <span class="dg-rank">#${i+1}</span>
+            <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span style="color:var(--muted);">· погрешность ${fmtKm(err)}</span></span>
+            <span class="dg-guess">${fmtKm(row.guess_km)}</span>
+            <span class="dg-pts">+${row.points||0}</span>
+          </div>`;
+        }).join('')}
+        <div class="dg-hint" style="margin-top:8px;">Если позже на этот же раунд ответит кто-то ещё и окажется точнее — баллы честно пересчитаются у всех.</div>
       `;
     }
   }
@@ -2873,7 +2857,7 @@ function renderDistanceGame(){
       standingsEl.innerHTML = dgStandings.map(row=>{
         const isMe = row.user_id===currentUser.id;
         return `<div class="dg-standing-row ${isMe?'me':''}">
-          <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span class="dg-rounds">· ${row.rounds_played} раунд(ов)</span></span>
+          <span class="dg-name">${escapeHtml(usernameById(row.user_id))}${isMe?' (ты)':''} <span class="dg-rounds">· раунд ${row.current_round_no}</span></span>
           <span class="dg-total">${row.total_points}</span>
         </div>`;
       }).join('');
@@ -2882,7 +2866,8 @@ function renderDistanceGame(){
 }
 
 async function initDistanceGame(){
-  await loadCurrentDistanceRound();
+  await loadMyProgress();
+  await ensureRoundContent(dgMyRoundNo);
   await loadDistanceAnswers();
   await loadDistanceStandings();
   renderDistanceGame();
