@@ -716,9 +716,9 @@
       <div class="card" style="margin-bottom:16px;">
         <h3 style="font-size:15px; margin-bottom:8px;">🧱 BlockStrike — тактический шутер в браузере</h3>
         <div class="dg-rules">
-          Вид от первого лица, графика в стиле Roblox. Кликни по экрану, чтобы захватить мышь.<br>
-          <b>WASD</b> — ходьба · <b>Shift</b> — бег · <b>Пробел</b> — прыжок · <b>ЛКМ</b> — стрельба · <b>R</b> — перезарядка · <b>B</b> — магазин · <b>1–4</b> — смена оружия.<br>
-          На телефоне — кнопки движения (камера пока только с ПК).
+          Вид от первого лица + боты + раунды. Кликни по экрану, чтобы захватить мышь.<br>
+          <b>WASD</b> ходьба · <b>Shift</b> бег · <b>Пробел</b> прыжок · <b>ЛКМ</b> стрельба/нож · <b>R</b> перезарядка · <b>B</b> магазин · <b>1–4</b> оружие · <b>Q</b> нож.<br>
+          Убийство бота: +$300 (+$450 в голову). Победа в раунде: +$2700. Старт раунда: +$800. Нож всегда с собой.
         </div>
       </div>
       <div class="card sb-card">
@@ -3071,14 +3071,17 @@ async function initDistanceGame(){
 let sbCanvas, sbEngine, sbScene, sbPlayer;
 let sbStarted = false;
 let sbBuyOpen = false;
+let sbBots = [];
+let sbRound = { phase:'buy', timeLeft:15, scoreCT:0, scoreT:0, number:1, freeze:true };
 
 const SBWeapons = {
-  ak47:  { id:'ak47',  name:'AK-47',        damage:36, rpm:600, magSize:30, maxReserve:90, reloadTime:2.5, recoil:{x:0.55,y:1.9}, spread:0.018, price:2700, movePenalty:0.15 },
-  m4a1:  { id:'m4a1',  name:'M4A1',         damage:33, rpm:666, magSize:30, maxReserve:90, reloadTime:3.1, recoil:{x:0.35,y:1.45},spread:0.013, price:3100, movePenalty:0.12 },
-  awp:   { id:'awp',   name:'AWP',          damage:115,rpm:41,  magSize:10, maxReserve:30, reloadTime:3.7, recoil:{x:0.15,y:4.2}, spread:0.002, price:4750, movePenalty:0.35 },
-  deagle:{ id:'deagle',name:'Desert Eagle', damage:53, rpm:267, magSize:7,  maxReserve:35, reloadTime:2.2, recoil:{x:0.9,y:3.1},  spread:0.022, price:700,  movePenalty:0.05 },
-  glock: { id:'glock', name:'Glock-18',     damage:30, rpm:400, magSize:20, maxReserve:120,reloadTime:2.2, recoil:{x:0.3,y:1.1},  spread:0.016, price:200,  movePenalty:0.03 },
-  usp:   { id:'usp',   name:'USP-S',        damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200,  movePenalty:0.03 }
+  knife: { id:'knife', name:'Нож', type:'melee', damage:65, rpm:90, magSize:0, maxReserve:0, reloadTime:0, recoil:{x:0,y:0}, spread:0, price:0, movePenalty:0, range:2.2 },
+  ak47:  { id:'ak47',  name:'AK-47',        type:'rifle',  damage:36, rpm:600, magSize:30, maxReserve:90, reloadTime:2.5, recoil:{x:0.55,y:1.9}, spread:0.018, price:2700, movePenalty:0.15, range:200 },
+  m4a1:  { id:'m4a1',  name:'M4A1',         type:'rifle',  damage:33, rpm:666, magSize:30, maxReserve:90, reloadTime:3.1, recoil:{x:0.35,y:1.45},spread:0.013, price:3100, movePenalty:0.12, range:200 },
+  awp:   { id:'awp',   name:'AWP',          type:'sniper', damage:115,rpm:41,  magSize:10, maxReserve:30, reloadTime:3.7, recoil:{x:0.15,y:4.2}, spread:0.002, price:4750, movePenalty:0.35, range:300 },
+  deagle:{ id:'deagle',name:'Desert Eagle', type:'pistol', damage:53, rpm:267, magSize:7,  maxReserve:35, reloadTime:2.2, recoil:{x:0.9,y:3.1},  spread:0.022, price:700,  movePenalty:0.05, range:80 },
+  glock: { id:'glock', name:'Glock-18',     type:'pistol', damage:30, rpm:400, magSize:20, maxReserve:120,reloadTime:2.2, recoil:{x:0.3,y:1.1},  spread:0.016, price:200,  movePenalty:0.03, range:60 },
+  usp:   { id:'usp',   name:'USP-S',        type:'pistol', damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200,  movePenalty:0.03, range:60 }
 };
 
 const SBInput = {
@@ -3090,13 +3093,11 @@ const SBInput = {
   init(canvas){
     if(this._inited) return;
     this._inited = true;
-
     window.addEventListener('keydown', e=>{
       this.keys[e.code] = true;
       if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', e=>{ this.keys[e.code] = false; });
-
     canvas.addEventListener('click', ()=>{
       if(!this.pointerLocked && !sbBuyOpen) canvas.requestPointerLock();
     });
@@ -3118,7 +3119,6 @@ const SBInput = {
     });
     canvas.addEventListener('contextmenu', e=> e.preventDefault());
   },
-
   isDown(code){ return !!this.keys[code]; },
   set(code, val){ this.keys[code] = val; },
   consumeMouse(){
@@ -3128,6 +3128,112 @@ const SBInput = {
   },
   reset(){ this.keys={}; this.mouse.left=false; this.mouse.right=false; this.mouse.dx=0; this.mouse.dy=0; }
 };
+
+class SBBot {
+  constructor(scene, x, z, team){
+    this.scene = scene;
+    this.team = team || 'T';
+    this.health = 100;
+    this.alive = true;
+    this.speed = 3.2 + Math.random()*0.8;
+    this.shootCooldown = 0;
+    this.thinkTimer = 0;
+    this.targetDir = new BABYLON.Vector3(0,0,0);
+    this.mesh = BABYLON.MeshBuilder.CreateCapsule('bot', {height:1.7, radius:0.38}, scene);
+    this.mesh.position.set(x, 0.85, z);
+    this.mesh.isPickable = true;
+    const mat = new BABYLON.StandardMaterial('botMat', scene);
+    mat.diffuseColor = team==='CT' ? new BABYLON.Color3(0.25,0.45,0.75) : new BABYLON.Color3(0.85,0.55,0.2);
+    this.mesh.material = mat;
+    // head hitbox marker
+    this.head = BABYLON.MeshBuilder.CreateSphere('botHead', {diameter:0.45}, scene);
+    this.head.parent = this.mesh;
+    this.head.position.y = 0.95;
+    this.head.isVisible = false;
+    this.head.isPickable = true;
+  }
+
+  update(dt, playerPos){
+    if(!this.alive) return;
+    this.thinkTimer -= dt;
+    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
+
+    const toPlayer = playerPos.subtract(this.mesh.position);
+    toPlayer.y = 0;
+    const dist = toPlayer.length();
+
+    if(this.thinkTimer <= 0){
+      this.thinkTimer = 0.4 + Math.random()*0.6;
+      if(dist < 35 && dist > 2.5){
+        // approach with slight offset
+        const ang = Math.atan2(toPlayer.x, toPlayer.z) + (Math.random()-0.5)*0.6;
+        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
+      } else if(dist <= 2.5){
+        this.targetDir.set(0,0,0);
+      } else {
+        // random wander
+        const ang = Math.random()*Math.PI*2;
+        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
+      }
+    }
+
+    if(this.targetDir.lengthSquared() > 0.01){
+      const move = this.targetDir.normalize().scale(this.speed * dt);
+      this.mesh.position.addInPlace(move);
+      this.mesh.rotation.y = Math.atan2(this.targetDir.x, this.targetDir.z);
+    }
+
+    // clamp to map
+    this.mesh.position.x = BABYLON.Scalar.Clamp(this.mesh.position.x, -42, 42);
+    this.mesh.position.z = BABYLON.Scalar.Clamp(this.mesh.position.z, -42, 42);
+
+    // simple "shoot" at player if close and facing roughly
+    if(dist < 22 && dist > 1.5 && this.shootCooldown <= 0 && sbRound.phase === 'live'){
+      const face = new BABYLON.Vector3(Math.sin(this.mesh.rotation.y), 0, Math.cos(this.mesh.rotation.y));
+      const dir = toPlayer.normalize();
+      if(BABYLON.Vector3.Dot(face, dir) > 0.55){
+        this.shootCooldown = 0.7 + Math.random()*0.5;
+        // damage player
+        if(sbPlayer && sbPlayer.isAlive){
+          const dmg = 12 + Math.floor(Math.random()*10);
+          sbPlayer.takeDamage(dmg);
+        }
+      }
+    }
+  }
+
+  takeDamage(amount, isHead){
+    if(!this.alive) return false;
+    const dmg = isHead ? amount * 2.2 : amount;
+    this.health -= dmg;
+    // flash
+    if(this.mesh.material){
+      const old = this.mesh.material.diffuseColor.clone();
+      this.mesh.material.diffuseColor = new BABYLON.Color3(1,0.3,0.3);
+      setTimeout(()=>{ if(this.mesh.material) this.mesh.material.diffuseColor = old; }, 80);
+    }
+    if(this.health <= 0){
+      this.die();
+      return true;
+    }
+    return false;
+  }
+
+  die(){
+    this.alive = false;
+    this.mesh.setEnabled(false);
+    this.head.setEnabled(false);
+  }
+
+  respawn(x, z){
+    this.alive = true;
+    this.health = 100;
+    this.mesh.setEnabled(true);
+    this.head.setEnabled(true);
+    this.mesh.position.set(x, 0.85, z);
+    this.shootCooldown = 1.5;
+  }
+}
 
 class SBPlayer {
   constructor(scene){
@@ -3154,16 +3260,18 @@ class SBPlayer {
     this.camera.angularSensibility = 1;
     scene.activeCamera = this.camera;
 
-    this.currentWeaponId = 'ak47';
-    this.weapon = SBWeapons.ak47;
+    // always have knife + glock
+    this.owned = new Set(['knife','glock']);
+    this.currentWeaponId = 'glock';
+    this.weapon = SBWeapons.glock;
     this.ammo = this.weapon.magSize;
     this.reserve = this.weapon.maxReserve;
     this.isReloading = false;
     this.reloadEnd = 0;
     this.lastShot = 0;
-    this.owned = new Set(['ak47','glock']);
     this.recoilPitch = 0;
     this.recoilYaw = 0;
+    this.kills = 0;
 
     this.updateUI();
   }
@@ -3182,6 +3290,12 @@ class SBPlayer {
     this.recoilYaw *= 0.86;
     this.camera.rotation.x += this.recoilPitch * dt * 60;
     this.camera.rotation.y += this.recoilYaw * dt * 60;
+
+    // freeze during buy phase
+    if(sbRound.freeze) {
+      this.updateUI();
+      return;
+    }
 
     let ix=0, iz=0;
     if(SBInput.isDown('KeyW')||SBInput.isDown('ArrowUp'))    iz += 1;
@@ -3225,28 +3339,36 @@ class SBPlayer {
       this.onGround = true;
     }
 
-    // walls soft clamp
     const lim = 44;
     this.camera.position.x = BABYLON.Scalar.Clamp(this.camera.position.x, -lim, lim);
     this.camera.position.z = BABYLON.Scalar.Clamp(this.camera.position.z, -lim, lim);
 
     if(this.isReloading && performance.now() >= this.reloadEnd) this.finishReload();
-    if(SBInput.isDown('KeyR') && !this.isReloading && this.ammo < this.weapon.magSize && this.reserve > 0) this.startReload();
+    if(SBInput.isDown('KeyR') && !this.isReloading && this.weapon.type !== 'melee' && this.ammo < this.weapon.magSize && this.reserve > 0) this.startReload();
 
-    if(SBInput.mouse.left && !this.isReloading && !sbBuyOpen) this.tryShoot();
+    if(SBInput.mouse.left && !this.isReloading && !sbBuyOpen && sbRound.phase === 'live') this.tryShoot();
 
+    // weapon slots: 1 rifle, 2 rifle2, 3 sniper, 4 pistol, 3 or Q for knife
     if(SBInput.isDown('Digit1')) this.switchWeapon('ak47');
     if(SBInput.isDown('Digit2')) this.switchWeapon('m4a1');
     if(SBInput.isDown('Digit3')) this.switchWeapon('awp');
     if(SBInput.isDown('Digit4')) this.switchWeapon('deagle');
+    if(SBInput.isDown('KeyQ') || SBInput.isDown('Digit5')) this.switchWeapon('knife');
 
     this.updateUI();
   }
 
   tryShoot(){
     const now = performance.now();
-    const delay = 60000 / this.weapon.rpm;
+    const delay = 60000 / Math.max(1, this.weapon.rpm);
     if(now - this.lastShot < delay) return;
+
+    if(this.weapon.type === 'melee'){
+      this.lastShot = now;
+      this.meleeAttack();
+      return;
+    }
+
     if(this.ammo <= 0){
       if(this.reserve > 0 && !this.isReloading) this.startReload();
       return;
@@ -3258,10 +3380,62 @@ class SBPlayer {
 
     const cross = document.getElementById('sbCrosshair');
     if(cross){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'), 60); }
+
+    // Raycast
+    this.doRaycast(this.weapon.damage, this.weapon.range || 200);
+  }
+
+  meleeAttack(){
+    const cross = document.getElementById('sbCrosshair');
+    if(cross){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'), 100); }
+    this.doRaycast(this.weapon.damage, this.weapon.range || 2.2);
+  }
+
+  doRaycast(damage, range){
+    const origin = this.camera.position.clone();
+    const dir = this.camera.getDirection(BABYLON.Vector3.Forward());
+    // slight spread for non-melee
+    if(this.weapon.type !== 'melee'){
+      dir.x += (Math.random()-0.5) * (this.weapon.spread||0);
+      dir.y += (Math.random()-0.5) * (this.weapon.spread||0);
+      dir.z += (Math.random()-0.5) * (this.weapon.spread||0);
+      dir.normalize();
+    }
+    const ray = new BABYLON.Ray(origin, dir, range);
+    const hit = this.scene.pickWithRay(ray, (mesh)=>{
+      return mesh.name === 'bot' || mesh.name === 'botHead';
+    });
+    if(hit && hit.hit && hit.pickedMesh){
+      const isHead = hit.pickedMesh.name === 'botHead';
+      // find bot
+      for(const bot of sbBots){
+        if(!bot.alive) continue;
+        if(hit.pickedMesh === bot.mesh || hit.pickedMesh === bot.head){
+          const killed = bot.takeDamage(damage, isHead);
+          if(killed){
+            this.kills++;
+            const reward = isHead ? 450 : 300;
+            this.money += reward;
+            this.showKillFeed(reward, isHead);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  showKillFeed(reward, headshot){
+    // brief flash on money
+    const mon = document.getElementById('sbMoney');
+    if(mon){
+      mon.style.color = '#fbbf24';
+      mon.textContent = '+$' + reward + (headshot ? ' HS' : '');
+      setTimeout(()=>{ mon.style.color = '#4ade80'; this.updateUI(); }, 900);
+    }
   }
 
   startReload(){
-    if(this.isReloading || this.reserve<=0) return;
+    if(this.isReloading || this.reserve<=0 || this.weapon.type==='melee') return;
     this.isReloading = true;
     this.reloadEnd = performance.now() + this.weapon.reloadTime * 1000;
   }
@@ -3274,18 +3448,23 @@ class SBPlayer {
 
   switchWeapon(id){
     if(!SBWeapons[id]) return;
-    if(!this.owned.has(id) && id!=='glock' && id!=='usp') return;
+    if(id !== 'knife' && !this.owned.has(id)) return;
     if(this.currentWeaponId === id) return;
     this.currentWeaponId = id;
     this.weapon = SBWeapons[id];
-    this.ammo = this.weapon.magSize;
-    this.reserve = this.weapon.maxReserve;
+    if(this.weapon.type === 'melee'){
+      this.ammo = 0; this.reserve = 0;
+    } else {
+      this.ammo = this.weapon.magSize;
+      this.reserve = this.weapon.maxReserve;
+    }
     this.isReloading = false;
   }
 
   buyWeapon(id){
     const w = SBWeapons[id];
-    if(!w || this.money < w.price) return false;
+    if(!w || w.price <= 0) return false;
+    if(this.money < w.price) return false;
     if(this.owned.has(id)){ this.switchWeapon(id); return true; }
     this.money -= w.price;
     this.owned.add(id);
@@ -3305,7 +3484,7 @@ class SBPlayer {
   }
 
   takeDamage(amount){
-    if(!this.isAlive) return;
+    if(!this.isAlive || sbRound.phase !== 'live') return;
     let rem = amount;
     if(this.armor > 0){
       const abs = Math.min(this.armor, rem * 0.5);
@@ -3318,22 +3497,21 @@ class SBPlayer {
   die(){
     this.isAlive = false;
     document.getElementById('sbDeath')?.classList.add('show');
-    let c = 3;
-    const el = document.getElementById('sbRespawnCount');
-    if(el) el.textContent = c;
-    const iv = setInterval(()=>{
-      c--; if(el) el.textContent = c;
-      if(c<=0){ clearInterval(iv); this.respawn(); }
-    }, 1000);
+    // end round loss after short delay
+    setTimeout(()=> sbEndRound(false), 1200);
   }
 
   respawn(){
     this.isAlive = true;
-    this.health = 100; this.armor = 0; this.hasHelmet = false;
-    this.camera.position.set(0, 1.7, -8);
+    this.health = 100;
+    // keep armor/money/weapons between rounds (CS style)
+    this.camera.position.set(0, 1.7, -18);
+    this.camera.rotation.set(0, 0, 0);
     this.velocity.set(0,0,0);
-    this.ammo = this.weapon.magSize;
-    this.reserve = this.weapon.maxReserve;
+    if(this.weapon.type !== 'melee'){
+      this.ammo = this.weapon.magSize;
+      this.reserve = Math.max(this.reserve, this.weapon.maxReserve);
+    }
     this.isReloading = false;
     document.getElementById('sbDeath')?.classList.remove('show');
     SBInput.reset();
@@ -3348,14 +3526,32 @@ class SBPlayer {
     const ar  = document.getElementById('sbAmmoRes');
     const wn  = document.getElementById('sbWeaponName');
     const mon = document.getElementById('sbMoney');
+    const timer = document.getElementById('sbTimer');
+    const score = document.getElementById('sbScore');
+
     if(hpT) hpT.textContent = Math.ceil(this.health);
     if(hpF) hpF.style.width = this.health + '%';
     if(arT) arT.textContent = Math.ceil(this.armor);
     if(arF) arF.style.width = this.armor + '%';
-    if(ac)  ac.textContent = this.ammo;
-    if(ar)  ar.textContent = this.reserve;
-    if(wn)  wn.textContent = this.isReloading ? this.weapon.name + ' (перезарядка...)' : this.weapon.name;
+    if(this.weapon.type === 'melee'){
+      if(ac) ac.textContent = '∞';
+      if(ar) ar.textContent = '';
+    } else {
+      if(ac) ac.textContent = this.ammo;
+      if(ar) ar.textContent = this.reserve;
+    }
+    if(wn){
+      if(this.isReloading) wn.textContent = this.weapon.name + ' (перезарядка...)';
+      else wn.textContent = this.weapon.name + (this.weapon.type==='melee' ? '  [Q]' : '');
+    }
     if(mon) mon.textContent = '$' + this.money;
+    if(timer){
+      const m = Math.floor(Math.max(0,sbRound.timeLeft)/60);
+      const s = Math.floor(Math.max(0,sbRound.timeLeft)%60);
+      const phase = sbRound.phase==='buy' ? 'BUY ' : '';
+      timer.textContent = phase + m + ':' + String(s).padStart(2,'0');
+    }
+    if(score) score.textContent = 'CT ' + sbRound.scoreCT + ' : ' + sbRound.scoreT + ' T  · R' + sbRound.number;
   }
 }
 
@@ -3409,7 +3605,6 @@ function sbCreateMap(scene){
   ];
   pos.forEach((p,i)=> box(p[0],p[1],p[2],p[3],p[4],p[5], colors[i%colors.length]));
 
-  // boundary walls
   const wallC = [0.25,0.25,0.28];
   box(0,3,46,92,6,1.5, wallC);
   box(0,3,-46,92,6,1.5, wallC);
@@ -3417,7 +3612,77 @@ function sbCreateMap(scene){
   box(46,3,0,1.5,6,92, wallC);
 }
 
+function sbSpawnBots(){
+  // clear old
+  sbBots.forEach(b=>{ b.mesh.dispose(); b.head.dispose(); });
+  sbBots = [];
+  const spots = [
+    [12, 18], [-14, 20], [20, 8], [-18, -6], [8, -16],
+    [-10, 12], [16, -10], [-20, 15]
+  ];
+  for(let i=0;i<5;i++){
+    const [x,z] = spots[i % spots.length];
+    const bot = new SBBot(sbScene, x + (Math.random()-0.5)*3, z + (Math.random()-0.5)*3, 'T');
+    sbBots.push(bot);
+  }
+}
+
+function sbStartRound(){
+  sbRound.phase = 'buy';
+  sbRound.timeLeft = 12;
+  sbRound.freeze = true;
+  if(sbPlayer){
+    sbPlayer.respawn();
+    // give round start money
+    sbPlayer.money = Math.min(16000, sbPlayer.money + 800);
+  }
+  sbSpawnBots();
+  // auto open buy briefly hint
+}
+
+function sbGoLive(){
+  sbRound.phase = 'live';
+  sbRound.timeLeft = 90;
+  sbRound.freeze = false;
+  if(sbBuyOpen) sbToggleBuy();
+}
+
+function sbEndRound(playerWon){
+  if(sbRound.phase === 'ended') return;
+  sbRound.phase = 'ended';
+  sbRound.freeze = true;
+  if(playerWon){
+    sbRound.scoreCT++;
+    if(sbPlayer) sbPlayer.money = Math.min(16000, sbPlayer.money + 2700);
+  } else {
+    sbRound.scoreT++;
+    if(sbPlayer) sbPlayer.money = Math.min(16000, sbPlayer.money + 1400);
+  }
+  // next round after 4s
+  setTimeout(()=>{
+    sbRound.number++;
+    sbStartRound();
+  }, 4000);
+}
+
+function sbUpdateRound(dt){
+  if(sbRound.phase === 'ended') return;
+  sbRound.timeLeft -= dt;
+  if(sbRound.phase === 'buy' && sbRound.timeLeft <= 0){
+    sbGoLive();
+  } else if(sbRound.phase === 'live'){
+    // check win: all bots dead
+    const aliveBots = sbBots.filter(b=>b.alive).length;
+    if(aliveBots === 0){
+      sbEndRound(true);
+    } else if(sbRound.timeLeft <= 0){
+      sbEndRound(false); // time ran out, T win
+    }
+  }
+}
+
 function sbToggleBuy(){
+  // only during buy phase or always allow browse
   sbBuyOpen = !sbBuyOpen;
   const menu = document.getElementById('sbBuyMenu');
   if(sbBuyOpen){
@@ -3425,7 +3690,7 @@ function sbToggleBuy(){
     document.exitPointerLock();
   } else {
     menu?.classList.remove('open');
-    sbCanvas?.requestPointerLock();
+    if(sbRound.phase !== 'buy') sbCanvas?.requestPointerLock();
   }
 }
 
@@ -3440,8 +3705,8 @@ function initSandboxGame(){
   SBInput.init(sbCanvas);
   sbPlayer = new SBPlayer(sbScene);
   sbCreateMap(sbScene);
+  sbStartRound();
 
-  // buy menu buttons
   document.querySelectorAll('#sbBuyMenu [data-weapon]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       sbPlayer.buyWeapon(btn.getAttribute('data-weapon'));
@@ -3463,14 +3728,16 @@ function initSandboxGame(){
   });
 
   sbEngine.runRenderLoop(()=>{
-    const delta = sbEngine.getDeltaTime() / 1000;
-    sbPlayer.update(delta);
+    const delta = Math.min(sbEngine.getDeltaTime() / 1000, 0.05);
+    sbUpdateRound(delta);
+    if(sbPlayer) sbPlayer.update(delta);
+    const ppos = sbPlayer ? sbPlayer.camera.position : BABYLON.Vector3.Zero();
+    sbBots.forEach(b=> b.update(delta, ppos));
     sbScene.render();
   });
 
   window.addEventListener('resize', ()=>{ if(sbEngine) sbEngine.resize(); });
 
-  // mobile d-pad
   const bindHold = (el, code)=>{
     if(!el) return;
     const on  = e=>{ e.preventDefault(); SBInput.set(code, true); };
