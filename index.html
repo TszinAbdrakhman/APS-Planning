@@ -3133,9 +3133,9 @@ class SBBot {
   constructor(scene, x, z, team){
     this.scene = scene;
     this.team = team || 'T';
-    this.health = 100;
+    this.health = 70;
     this.alive = true;
-    this.speed = 3.2 + Math.random()*0.8;
+    this.speed = 2.0 + Math.random()*0.6;
     this.shootCooldown = 0;
     this.thinkTimer = 0;
     this.targetDir = new BABYLON.Vector3(0,0,0);
@@ -3155,6 +3155,9 @@ class SBBot {
 
   update(dt, playerPos){
     if(!this.alive) return;
+    // полностью стоим во время buy / ended
+    if(sbRound.freeze || sbRound.phase !== 'live') return;
+
     this.thinkTimer -= dt;
     this.shootCooldown = Math.max(0, this.shootCooldown - dt);
 
@@ -3163,17 +3166,18 @@ class SBBot {
     const dist = toPlayer.length();
 
     if(this.thinkTimer <= 0){
-      this.thinkTimer = 0.4 + Math.random()*0.6;
-      if(dist < 35 && dist > 2.5){
-        // approach with slight offset
-        const ang = Math.atan2(toPlayer.x, toPlayer.z) + (Math.random()-0.5)*0.6;
+      this.thinkTimer = 0.8 + Math.random()*1.0;
+      if(dist < 28 && dist > 4){
+        // медленно приближаются, не в упор
+        const ang = Math.atan2(toPlayer.x, toPlayer.z) + (Math.random()-0.5)*0.9;
         this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
-      } else if(dist <= 2.5){
-        this.targetDir.set(0,0,0);
+      } else if(dist <= 4){
+        // отходят чуть назад
+        const ang = Math.atan2(-toPlayer.x, -toPlayer.z);
+        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
       } else {
-        // random wander
         const ang = Math.random()*Math.PI*2;
-        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
+        this.targetDir.set(Math.sin(ang)*0.5, 0, Math.cos(ang)*0.5);
       }
     }
 
@@ -3183,19 +3187,18 @@ class SBBot {
       this.mesh.rotation.y = Math.atan2(this.targetDir.x, this.targetDir.z);
     }
 
-    // clamp to map
     this.mesh.position.x = BABYLON.Scalar.Clamp(this.mesh.position.x, -42, 42);
     this.mesh.position.z = BABYLON.Scalar.Clamp(this.mesh.position.z, -42, 42);
 
-    // simple "shoot" at player if close and facing roughly
-    if(dist < 22 && dist > 1.5 && this.shootCooldown <= 0 && sbRound.phase === 'live'){
+    // стреляют реже и слабее, только с дистанции
+    if(dist < 16 && dist > 3 && this.shootCooldown <= 0){
       const face = new BABYLON.Vector3(Math.sin(this.mesh.rotation.y), 0, Math.cos(this.mesh.rotation.y));
       const dir = toPlayer.normalize();
-      if(BABYLON.Vector3.Dot(face, dir) > 0.55){
-        this.shootCooldown = 0.7 + Math.random()*0.5;
-        // damage player
+      if(BABYLON.Vector3.Dot(face, dir) > 0.7){
+        this.shootCooldown = 1.4 + Math.random()*1.2;
         if(sbPlayer && sbPlayer.isAlive){
-          const dmg = 12 + Math.floor(Math.random()*10);
+          // слабый урон 6–11
+          const dmg = 6 + Math.floor(Math.random()*6);
           sbPlayer.takeDamage(dmg);
         }
       }
@@ -3204,7 +3207,7 @@ class SBBot {
 
   takeDamage(amount, isHead){
     if(!this.alive) return false;
-    const dmg = isHead ? amount * 2.2 : amount;
+    const dmg = isHead ? amount * 1.8 : amount;
     this.health -= dmg;
     // flash
     if(this.mesh.material){
@@ -3227,7 +3230,7 @@ class SBBot {
 
   respawn(x, z){
     this.alive = true;
-    this.health = 100;
+    this.health = 70;
     this.mesh.setEnabled(true);
     this.head.setEnabled(true);
     this.mesh.position.set(x, 0.85, z);
@@ -3613,31 +3616,34 @@ function sbCreateMap(scene){
 }
 
 function sbSpawnBots(){
-  // clear old
   sbBots.forEach(b=>{ b.mesh.dispose(); b.head.dispose(); });
   sbBots = [];
+  // спавн далеко от игрока (игрок на z=-18)
   const spots = [
-    [12, 18], [-14, 20], [20, 8], [-18, -6], [8, -16],
-    [-10, 12], [16, -10], [-20, 15]
+    [14, 22], [-16, 24], [20, 14],
+    [-20, 10], [10, 28]
   ];
-  for(let i=0;i<5;i++){
-    const [x,z] = spots[i % spots.length];
-    const bot = new SBBot(sbScene, x + (Math.random()-0.5)*3, z + (Math.random()-0.5)*3, 'T');
+  for(let i=0;i<3;i++){
+    const [x,z] = spots[i];
+    const bot = new SBBot(sbScene, x + (Math.random()-0.5)*2, z + (Math.random()-0.5)*2, 'T');
+    bot.shootCooldown = 2.5 + Math.random(); // не стреляют сразу
     sbBots.push(bot);
   }
 }
 
 function sbStartRound(){
   sbRound.phase = 'buy';
-  sbRound.timeLeft = 12;
+  sbRound.timeLeft = 15;
   sbRound.freeze = true;
   if(sbPlayer){
     sbPlayer.respawn();
-    // give round start money
-    sbPlayer.money = Math.min(16000, sbPlayer.money + 800);
+    sbPlayer.money = Math.min(16000, sbPlayer.money + 1000);
+    // в первых раундах даём лёгкую броню, чтобы не умирать сразу
+    if(sbRound.number <= 2 && sbPlayer.armor < 50){
+      sbPlayer.armor = 50;
+    }
   }
   sbSpawnBots();
-  // auto open buy briefly hint
 }
 
 function sbGoLive(){
