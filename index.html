@@ -409,6 +409,31 @@
   .sb-nades{position:absolute; top:40px; left:18px; font-size:12px; opacity:.9; font-family:'IBM Plex Mono',monospace;}
   .sb-killfeed{position:absolute; top:70px; right:16px; width:220px; text-align:right; font-size:12px; line-height:1.5; pointer-events:none;}
   .sb-killfeed div{opacity:0.95; margin-bottom:2px; text-shadow:0 1px 3px #000;}
+  .sb-menu{position:absolute; inset:0; z-index:20; background:rgba(12,14,22,.94); display:flex; align-items:center; justify-content:center; pointer-events:auto; color:#fff; font-family:'Space Grotesk',sans-serif;}
+  .sb-menu.hidden{display:none;}
+  .sb-menu-card{background:#1a1d28; border:1px solid #333; border-radius:14px; padding:24px 28px; width:min(420px,92%); max-height:90%; overflow-y:auto;}
+  .sb-menu-card h2{font-size:20px; margin:0 0 6px; text-align:center;}
+  .sb-menu-card .sub{font-size:12px; color:#9aa; text-align:center; margin-bottom:16px;}
+  .sb-menu-card label{display:block; font-size:12px; color:#9aa; margin:12px 0 4px;}
+  .sb-menu-card select, .sb-menu-card input[type=text], .sb-menu-card input[type=number]{
+    width:100%; padding:10px 12px; border-radius:8px; border:1px solid #444; background:#12141c; color:#fff; font-size:14px; font-family:inherit; box-sizing:border-box;}
+  .sb-menu-btn{width:100%; margin-top:10px; padding:12px; border:none; border-radius:8px; background:var(--amber,#E8A33D); color:#1B1F3B; font-weight:700; font-size:14px; cursor:pointer; font-family:inherit;}
+  .sb-menu-btn.ghost{background:transparent; border:1px solid #444; color:#fff;}
+  .sb-menu-btn:hover{opacity:.92;}
+  .sb-menu-row{display:flex; gap:8px; align-items:center;}
+  .sb-menu-row input{flex:1;}
+  .sb-mode-btns{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;}
+  .sb-mode-btns button{padding:14px 10px; border-radius:10px; border:2px solid #333; background:#12141c; color:#fff; cursor:pointer; font-weight:600; font-family:inherit;}
+  .sb-mode-btns button.active{border-color:var(--amber,#E8A33D); background:#2a2418;}
+  .sb-scope{position:absolute; inset:0; z-index:8; pointer-events:none; display:none; background:radial-gradient(circle at center, transparent 18%, rgba(0,0,0,.92) 42%);}
+  .sb-scope.on{display:block;}
+  .sb-scope-cross{position:absolute; top:50%; left:50%; width:2px; height:2px; background:#000; transform:translate(-50%,-50%);}
+  .sb-scope-cross::before,.sb-scope-cross::after{content:''; position:absolute; background:rgba(0,0,0,.85);}
+  .sb-scope-cross::before{width:1px; height:120px; left:50%; top:-60px; transform:translateX(-50%);}
+  .sb-scope-cross::after{height:1px; width:120px; top:50%; left:-60px; transform:translateY(-50%);}
+  .sb-lobby-list{margin-top:10px; font-size:13px; max-height:120px; overflow-y:auto;}
+  .sb-lobby-list div{padding:6px 0; border-bottom:1px solid #333;}
+
 
   .sb-buy-menu{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(12,12,18,.97); border:1px solid #333; padding:22px 26px; border-radius:12px; pointer-events:auto; min-width:320px; max-height:75%; overflow-y:auto; box-shadow:0 16px 40px rgba(0,0,0,.55); z-index:6; display:none;}
   .sb-buy-menu.open{display:block;}
@@ -721,17 +746,59 @@
       <div class="card" style="margin-bottom:16px;">
         <h3 style="font-size:15px; margin-bottom:8px;">🧱 BlockStrike — тактический шутер в браузере</h3>
         <div class="dg-rules">
-          Шутер от 1-го лица: руки, модели ботов, звуки, гранаты, раунды.<br>
-          <b>WASD</b> · <b>Shift</b> бег · <b>Пробел</b> · <b>ЛКМ</b> стрельба · <b>G</b> граната · <b>R</b> перезарядка · <b>B</b> магазин · <b>1–4</b> ствол · <b>Q</b> нож.<br>
-          Убийство +$300 / хедшот +$450 · победа раунда +$2700 · старт +$1000.
+          Меню: режим с ботами или онлайн-комната · карты Dust/Mirage/Inferno (упрощённые) · свой вид оружия · прицел AWP (ПКМ).<br>
+          <b>WASD</b> · <b>Shift</b> · <b>Пробел</b> · <b>ЛКМ</b> огонь · <b>ПКМ</b> прицел AWP · <b>G</b> граната · <b>R</b> · <b>B</b> магазин · <b>1–4</b> · <b>Q</b> нож · <b>Esc</b> меню.<br>
+          Онлайн: создай комнату → скинь код другу → хост жмёт «Старт». Синхронизация через Supabase Realtime (упрощённая).
         </div>
       </div>
       <div class="card sb-card">
         <div class="sb-canvas-wrap" id="sbCanvasWrap">
           <canvas id="sbCanvas"></canvas>
 
+          <!-- Main menu -->
+          <div class="sb-menu" id="sbMainMenu">
+            <div class="sb-menu-card">
+              <h2>BlockStrike</h2>
+              <div class="sub">Выбери режим и карту</div>
+              <div class="sb-mode-btns">
+                <button type="button" class="active" id="sbModeBots" onclick="sbSetMode('bots')">🤖 С ботами</button>
+                <button type="button" id="sbModeOnline" onclick="sbSetMode('online')">🌐 Онлайн</button>
+              </div>
+              <div id="sbBotsOptions">
+                <label>Карта</label>
+                <select id="sbMapSelect">
+                  <option value="dust">Dust II (упрощ.)</option>
+                  <option value="mirage">Mirage (упрощ.)</option>
+                  <option value="inferno">Inferno (упрощ.)</option>
+                </select>
+                <label>Количество ботов (1–8)</label>
+                <input type="number" id="sbBotCount" min="1" max="8" value="3">
+                <button type="button" class="sb-menu-btn" onclick="sbStartBotsGame()">Играть</button>
+              </div>
+              <div id="sbOnlineOptions" style="display:none;">
+                <label>Карта (при создании)</label>
+                <select id="sbOnlineMapSelect">
+                  <option value="dust">Dust II (упрощ.)</option>
+                  <option value="mirage">Mirage (упрощ.)</option>
+                  <option value="inferno">Inferno (упрощ.)</option>
+                </select>
+                <button type="button" class="sb-menu-btn" onclick="sbCreateRoom()">Создать комнату</button>
+                <label>Или ввести код комнаты</label>
+                <div class="sb-menu-row">
+                  <input type="text" id="sbJoinCode" placeholder="Код комнаты" maxlength="6">
+                  <button type="button" class="sb-menu-btn" style="width:auto;margin-top:0;padding:10px 14px;" onclick="sbJoinRoom()">Войти</button>
+                </div>
+                <div class="sb-lobby-list" id="sbLobbyInfo"></div>
+                <button type="button" class="sb-menu-btn ghost" id="sbStartOnlineBtn" style="display:none;" onclick="sbStartOnlineGame()">Старт матча (хост)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- AWP scope -->
+          <div class="sb-scope" id="sbScope"><div class="sb-scope-cross"></div></div>
+
           <!-- UI -->
-          <div class="sb-ui" id="sbUi">
+          <div class="sb-ui" id="sbUi" style="display:none;">
             <div class="sb-crosshair" id="sbCrosshair">+</div>
             <div class="sb-topbar">
               <div id="sbTimer">1:45</div>
@@ -3079,46 +3146,38 @@ async function initDistanceGame(){
 /* ============ BLOCKSTRIKE / SANDBOX FPS ============ */
 let sbCanvas, sbEngine, sbScene, sbPlayer;
 let sbStarted = false;
+let sbGameActive = false;
 let sbBuyOpen = false;
 let sbBots = [];
 let sbRound = { phase:'buy', timeLeft:15, scoreCT:0, scoreT:0, number:1, freeze:true };
-let sbGrenades = []; // active thrown nades
+let sbGrenades = [];
+let sbMode = 'bots'; // bots | online
+let sbBotCount = 3;
+let sbCurrentMap = 'dust';
+let sbRemotePlayers = {}; // id -> { mesh, root, data }
+let sbRoomChannel = null;
+let sbRoomCode = null;
+let sbIsHost = false;
+let sbMyId = null;
+let sbOnlineStarted = false;
 
-/* ---- simple WebAudio SFX ---- */
 const SBAudio = {
   ctx: null,
-  ensure(){
-    if(!this.ctx){
-      try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
-    }
-    if(this.ctx && this.ctx.state==='suspended') this.ctx.resume();
-  },
+  ensure(){ if(!this.ctx){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(this.ctx&&this.ctx.state==='suspended') this.ctx.resume(); },
   tone(freq, dur, type, vol, slide){
     this.ensure(); if(!this.ctx) return;
-    const t0 = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = type||'square';
-    o.frequency.setValueAtTime(freq, t0);
-    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide), t0+dur);
-    g.gain.setValueAtTime(vol||0.08, t0);
-    g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
-    o.connect(g); g.connect(this.ctx.destination);
-    o.start(t0); o.stop(t0+dur+0.02);
+    const t0=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(freq,t0);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(20,slide),t0+dur);
+    g.gain.setValueAtTime(vol||0.08,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t0); o.stop(t0+dur+0.02);
   },
   noise(dur, vol){
     this.ensure(); if(!this.ctx) return;
-    const sr = this.ctx.sampleRate;
-    const n = Math.floor(sr*dur);
-    const buf = this.ctx.createBuffer(1, n, sr);
-    const d = buf.getChannelData(0);
-    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1-i/n);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const g = this.ctx.createGain();
-    g.gain.value = vol||0.12;
-    src.connect(g); g.connect(this.ctx.destination);
-    src.start();
+    const sr=this.ctx.sampleRate, n=Math.floor(sr*dur), buf=this.ctx.createBuffer(1,n,sr), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const src=this.ctx.createBufferSource(); src.buffer=buf;
+    const g=this.ctx.createGain(); g.gain.value=vol||0.12; src.connect(g); g.connect(this.ctx.destination); src.start();
   },
   shoot(kind){
     if(kind==='knife'){ this.tone(180,0.08,'sawtooth',0.1,60); return; }
@@ -3137,889 +3196,714 @@ const SBAudio = {
 
 const SBWeapons = {
   knife: { id:'knife', name:'Нож', type:'melee', damage:65, rpm:90, magSize:0, maxReserve:0, reloadTime:0, recoil:{x:0,y:0}, spread:0, price:0, movePenalty:0, range:2.4 },
-  ak47:  { id:'ak47',  name:'AK-47',        type:'rifle',  damage:36, rpm:600, magSize:30, maxReserve:90, reloadTime:2.5, recoil:{x:0.55,y:1.9}, spread:0.018, price:2700, movePenalty:0.15, range:200 },
-  m4a1:  { id:'m4a1',  name:'M4A1',         type:'rifle',  damage:33, rpm:666, magSize:30, maxReserve:90, reloadTime:3.1, recoil:{x:0.35,y:1.45},spread:0.013, price:3100, movePenalty:0.12, range:200 },
-  awp:   { id:'awp',   name:'AWP',          type:'sniper', damage:115,rpm:41,  magSize:10, maxReserve:30, reloadTime:3.7, recoil:{x:0.15,y:4.2}, spread:0.002, price:4750, movePenalty:0.35, range:300 },
-  deagle:{ id:'deagle',name:'Desert Eagle', type:'pistol', damage:53, rpm:267, magSize:7,  maxReserve:35, reloadTime:2.2, recoil:{x:0.9,y:3.1},  spread:0.022, price:700,  movePenalty:0.05, range:80 },
-  glock: { id:'glock', name:'Glock-18',     type:'pistol', damage:30, rpm:400, magSize:20, maxReserve:120,reloadTime:2.2, recoil:{x:0.3,y:1.1},  spread:0.016, price:200,  movePenalty:0.03, range:60 },
-  usp:   { id:'usp',   name:'USP-S',        type:'pistol', damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200,  movePenalty:0.03, range:60 }
+  ak47:  { id:'ak47',  name:'AK-47', type:'rifle', damage:36, rpm:600, magSize:30, maxReserve:90, reloadTime:2.5, recoil:{x:0.55,y:1.9}, spread:0.018, price:2700, movePenalty:0.15, range:200 },
+  m4a1:  { id:'m4a1',  name:'M4A1', type:'rifle', damage:33, rpm:666, magSize:30, maxReserve:90, reloadTime:3.1, recoil:{x:0.35,y:1.45}, spread:0.013, price:3100, movePenalty:0.12, range:200 },
+  awp:   { id:'awp',   name:'AWP', type:'sniper', damage:115, rpm:41, magSize:10, maxReserve:30, reloadTime:3.7, recoil:{x:0.15,y:4.2}, spread:0.001, price:4750, movePenalty:0.35, range:400 },
+  deagle:{ id:'deagle',name:'Desert Eagle', type:'pistol', damage:53, rpm:267, magSize:7, maxReserve:35, reloadTime:2.2, recoil:{x:0.9,y:3.1}, spread:0.022, price:700, movePenalty:0.05, range:80 },
+  glock: { id:'glock', name:'Glock-18', type:'pistol', damage:30, rpm:400, magSize:20, maxReserve:120, reloadTime:2.2, recoil:{x:0.3,y:1.1}, spread:0.016, price:200, movePenalty:0.03, range:60 },
+  usp:   { id:'usp',   name:'USP-S', type:'pistol', damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200, movePenalty:0.03, range:60 }
 };
 
 const SBInput = {
-  keys: {},
-  mouse: { dx:0, dy:0, left:false, right:false },
-  pointerLocked: false,
-  _inited: false,
+  keys:{}, mouse:{dx:0,dy:0,left:false,right:false}, pointerLocked:false, _inited:false,
   init(canvas){
-    if(this._inited) return;
-    this._inited = true;
-    window.addEventListener('keydown', e=>{
-      this.keys[e.code] = true;
-      if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
-    });
-    window.addEventListener('keyup', e=>{ this.keys[e.code] = false; });
-    canvas.addEventListener('click', ()=>{
-      SBAudio.ensure();
-      if(!this.pointerLocked && !sbBuyOpen) canvas.requestPointerLock();
-    });
-    document.addEventListener('pointerlockchange', ()=>{
-      this.pointerLocked = document.pointerLockElement === canvas;
-    });
-    document.addEventListener('mousemove', e=>{
-      if(!this.pointerLocked) return;
-      this.mouse.dx += e.movementX;
-      this.mouse.dy += e.movementY;
-    });
-    document.addEventListener('mousedown', e=>{
-      if(e.button===0) this.mouse.left = true;
-      if(e.button===2) this.mouse.right = true;
-    });
-    document.addEventListener('mouseup', e=>{
-      if(e.button===0) this.mouse.left = false;
-      if(e.button===2) this.mouse.right = false;
-    });
+    if(this._inited) return; this._inited=true;
+    window.addEventListener('keydown', e=>{ this.keys[e.code]=true; if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
+    window.addEventListener('keyup', e=>{ this.keys[e.code]=false; });
+    canvas.addEventListener('click', ()=>{ SBAudio.ensure(); if(!this.pointerLocked && !sbBuyOpen && sbGameActive) canvas.requestPointerLock(); });
+    document.addEventListener('pointerlockchange', ()=>{ this.pointerLocked = document.pointerLockElement===canvas; });
+    document.addEventListener('mousemove', e=>{ if(!this.pointerLocked) return; this.mouse.dx+=e.movementX; this.mouse.dy+=e.movementY; });
+    document.addEventListener('mousedown', e=>{ if(e.button===0) this.mouse.left=true; if(e.button===2) this.mouse.right=true; });
+    document.addEventListener('mouseup', e=>{ if(e.button===0) this.mouse.left=false; if(e.button===2) this.mouse.right=false; });
     canvas.addEventListener('contextmenu', e=> e.preventDefault());
   },
-  isDown(code){ return !!this.keys[code]; },
-  set(code, val){ this.keys[code] = val; },
-  consumeMouse(){
-    const d = { dx:this.mouse.dx, dy:this.mouse.dy };
-    this.mouse.dx = 0; this.mouse.dy = 0;
-    return d;
-  },
+  isDown(c){ return !!this.keys[c]; }, set(c,v){ this.keys[c]=v; },
+  consumeMouse(){ const d={dx:this.mouse.dx,dy:this.mouse.dy}; this.mouse.dx=0; this.mouse.dy=0; return d; },
   reset(){ this.keys={}; this.mouse.left=false; this.mouse.right=false; this.mouse.dx=0; this.mouse.dy=0; }
 };
 
-/* ---- Roblox-style humanoid builder ---- */
 function sbMakeHumanoid(scene, color, scale){
-  scale = scale || 1;
-  const root = new BABYLON.TransformNode('human', scene);
-  const mat = new BABYLON.StandardMaterial('hmat'+Math.random(), scene);
-  mat.diffuseColor = color;
-  mat.specularColor = new BABYLON.Color3(0.1,0.1,0.1);
-
-  function part(name, w,h,d, y, x){
-    const m = BABYLON.MeshBuilder.CreateBox(name, {width:w*scale, height:h*scale, depth:d*scale}, scene);
-    m.parent = root;
-    m.position.y = y*scale;
-    m.position.x = (x||0)*scale;
-    m.material = mat;
-    m.isPickable = true;
-    return m;
+  scale=scale||1;
+  const root=new BABYLON.TransformNode('human',scene);
+  const mat=new BABYLON.StandardMaterial('hmat'+Math.random(),scene);
+  mat.diffuseColor=color; mat.specularColor=new BABYLON.Color3(0.1,0.1,0.1);
+  function part(name,w,h,d,y,x){
+    const m=BABYLON.MeshBuilder.CreateBox(name,{width:w*scale,height:h*scale,depth:d*scale},scene);
+    m.parent=root; m.position.y=y*scale; m.position.x=(x||0)*scale; m.material=mat; m.isPickable=true; return m;
   }
-  const torso = part('torso', 0.7, 0.85, 0.4, 1.05);
-  const head  = part('botHead', 0.48, 0.48, 0.48, 1.72);
-  const legL  = part('legL', 0.28, 0.7, 0.28, 0.35, -0.18);
-  const legR  = part('legR', 0.28, 0.7, 0.28, 0.35, 0.18);
-  const armL  = part('armL', 0.22, 0.7, 0.22, 1.0, -0.5);
-  const armR  = part('armR', 0.22, 0.7, 0.22, 1.0, 0.5);
-  // face plate
-  const face = BABYLON.MeshBuilder.CreateBox('face', {width:0.35*scale, height:0.2*scale, depth:0.06*scale}, scene);
-  face.parent = root;
-  face.position.set(0, 1.75*scale, 0.24*scale);
-  const fmat = new BABYLON.StandardMaterial('fmat', scene);
-  fmat.diffuseColor = new BABYLON.Color3(0.1,0.1,0.15);
-  face.material = fmat;
-  face.isPickable = false;
-
-  return { root, head, torso, parts:[torso,head,legL,legR,armL,armR,face] };
+  const torso=part('torso',0.7,0.85,0.4,1.05);
+  const head=part('botHead',0.48,0.48,0.48,1.72);
+  part('legL',0.28,0.7,0.28,0.35,-0.18); part('legR',0.28,0.7,0.28,0.35,0.18);
+  part('armL',0.22,0.7,0.22,1.0,-0.5); part('armR',0.22,0.7,0.22,1.0,0.5);
+  const face=BABYLON.MeshBuilder.CreateBox('face',{width:0.35*scale,height:0.2*scale,depth:0.06*scale},scene);
+  face.parent=root; face.position.set(0,1.75*scale,0.24*scale);
+  const fmat=new BABYLON.StandardMaterial('fmat',scene); fmat.diffuseColor=new BABYLON.Color3(0.1,0.1,0.15); face.material=fmat; face.isPickable=false;
+  return { root, head, torso, parts: root.getChildMeshes() };
 }
 
-/* ---- First-person arms + weapon ---- */
 function sbCreateViewmodel(scene, camera){
-  const root = new BABYLON.TransformNode('vm', scene);
-  root.parent = camera;
-  root.position.set(0.28, -0.32, 0.55);
+  const root=new BABYLON.TransformNode('vm',scene);
+  root.parent=camera; root.position.set(0.28,-0.32,0.55);
+  const skin=new BABYLON.StandardMaterial('skin',scene);
+  skin.diffuseColor=new BABYLON.Color3(0.92,0.72,0.55); skin.specularColor=new BABYLON.Color3(0.05,0.05,0.05);
+  const arm=BABYLON.MeshBuilder.CreateBox('vmArm',{width:0.12,height:0.12,depth:0.38},scene);
+  arm.parent=root; arm.position.set(0.08,-0.02,-0.05); arm.rotation.x=0.15; arm.material=skin;
+  const hand=BABYLON.MeshBuilder.CreateBox('vmHand',{width:0.14,height:0.1,depth:0.14},scene);
+  hand.parent=root; hand.position.set(0.08,-0.04,0.18); hand.material=skin;
+  const armL=BABYLON.MeshBuilder.CreateBox('vmArmL',{width:0.1,height:0.1,depth:0.3},scene);
+  armL.parent=root; armL.position.set(-0.18,-0.05,0); armL.rotation.x=0.25; armL.rotation.z=0.2; armL.material=skin;
 
-  const skin = new BABYLON.StandardMaterial('skin', scene);
-  skin.diffuseColor = new BABYLON.Color3(0.92, 0.72, 0.55);
-  skin.specularColor = new BABYLON.Color3(0.05,0.05,0.05);
+  const gunMat=new BABYLON.StandardMaterial('gunMat',scene);
+  gunMat.diffuseColor=new BABYLON.Color3(0.18,0.18,0.2);
+  const woodMat=new BABYLON.StandardMaterial('woodMat',scene);
+  woodMat.diffuseColor=new BABYLON.Color3(0.45,0.28,0.12);
+  const accent=new BABYLON.StandardMaterial('accMat',scene);
+  accent.diffuseColor=new BABYLON.Color3(0.3,0.32,0.28);
 
-  // right forearm
-  const arm = BABYLON.MeshBuilder.CreateBox('vmArm', {width:0.12, height:0.12, depth:0.38}, scene);
-  arm.parent = root;
-  arm.position.set(0.08, -0.02, -0.05);
-  arm.rotation.x = 0.15;
-  arm.material = skin;
+  // generic parts we reshape per weapon
+  const body=BABYLON.MeshBuilder.CreateBox('vmBody',{width:0.08,height:0.1,depth:0.42},scene);
+  body.parent=root; body.material=gunMat;
+  const barrel=BABYLON.MeshBuilder.CreateBox('vmBarrel',{width:0.035,height:0.035,depth:0.3},scene);
+  barrel.parent=root; barrel.material=gunMat;
+  const stock=BABYLON.MeshBuilder.CreateBox('vmStock',{width:0.07,height:0.1,depth:0.18},scene);
+  stock.parent=root; stock.material=woodMat;
+  const mag=BABYLON.MeshBuilder.CreateBox('vmMag',{width:0.055,height:0.14,depth:0.07},scene);
+  mag.parent=root; mag.material=accent;
+  const scope=BABYLON.MeshBuilder.CreateBox('vmScope',{width:0.05,height:0.05,depth:0.16},scene);
+  scope.parent=root; scope.material=gunMat;
+  const blade=BABYLON.MeshBuilder.CreateBox('vmBlade',{width:0.03,height:0.08,depth:0.28},scene);
+  blade.parent=root; blade.material=gunMat;
 
-  // hand
-  const hand = BABYLON.MeshBuilder.CreateBox('vmHand', {width:0.14, height:0.1, depth:0.14}, scene);
-  hand.parent = root;
-  hand.position.set(0.08, -0.04, 0.18);
-  hand.material = skin;
+  return { root, body, barrel, stock, mag, scope, blade, arm, hand, armL, gunMat, woodMat };
+}
 
-  // left arm slight
-  const armL = BABYLON.MeshBuilder.CreateBox('vmArmL', {width:0.1, height:0.1, depth:0.3}, scene);
-  armL.parent = root;
-  armL.position.set(-0.18, -0.05, 0.0);
-  armL.rotation.x = 0.25;
-  armL.rotation.z = 0.2;
-  armL.material = skin;
+function sbApplyWeaponModel(vm, weaponId){
+  const hideAll=()=>{ ['body','barrel','stock','mag','scope','blade'].forEach(k=> vm[k].setEnabled(false)); };
+  hideAll();
+  vm.hand.position.set(0.08,-0.04,0.18);
+  vm.arm.rotation.x=0.15;
+  vm.root.position.set(0.28,-0.32,0.55);
 
-  // weapon body (changes shape by type)
-  const gunMat = new BABYLON.StandardMaterial('gunMat', scene);
-  gunMat.diffuseColor = new BABYLON.Color3(0.18, 0.18, 0.2);
-  gunMat.specularColor = new BABYLON.Color3(0.2,0.2,0.2);
-
-  const gun = BABYLON.MeshBuilder.CreateBox('vmGun', {width:0.08, height:0.1, depth:0.42}, scene);
-  gun.parent = root;
-  gun.position.set(0.06, 0.02, 0.28);
-  gun.material = gunMat;
-
-  const barrel = BABYLON.MeshBuilder.CreateBox('vmBarrel', {width:0.04, height:0.04, depth:0.28}, scene);
-  barrel.parent = root;
-  barrel.position.set(0.06, 0.04, 0.55);
-  barrel.material = gunMat;
-
-  const mag = BABYLON.MeshBuilder.CreateBox('vmMag', {width:0.06, height:0.14, depth:0.08}, scene);
-  mag.parent = root;
-  mag.position.set(0.06, -0.08, 0.22);
-  mag.material = gunMat;
-
-  return { root, gun, barrel, mag, arm, hand, armL, gunMat };
+  if(weaponId==='knife'){
+    vm.blade.setEnabled(true);
+    vm.blade.scaling.set(1,1,1);
+    vm.blade.position.set(0.12,0.0,0.38);
+    vm.blade.rotation.x=-0.2;
+    vm.hand.position.set(0.12,-0.02,0.28);
+    vm.arm.rotation.x=-0.25;
+    return;
+  }
+  if(weaponId==='glock' || weaponId==='usp'){
+    vm.body.setEnabled(true); vm.barrel.setEnabled(true); vm.mag.setEnabled(true);
+    vm.body.scaling.set(0.85,0.75,0.55); vm.body.position.set(0.06,0.0,0.28);
+    vm.barrel.scaling.set(0.7,0.7,0.45); vm.barrel.position.set(0.06,0.02,0.42);
+    vm.mag.scaling.set(0.7,0.55,0.7); vm.mag.position.set(0.06,-0.06,0.24);
+    return;
+  }
+  if(weaponId==='deagle'){
+    vm.body.setEnabled(true); vm.barrel.setEnabled(true); vm.mag.setEnabled(true);
+    vm.body.scaling.set(1.0,0.9,0.65); vm.body.position.set(0.06,0.0,0.30);
+    vm.barrel.scaling.set(0.9,0.9,0.7); vm.barrel.position.set(0.06,0.03,0.48);
+    vm.mag.scaling.set(0.85,0.7,0.8); vm.mag.position.set(0.06,-0.08,0.24);
+    return;
+  }
+  if(weaponId==='ak47'){
+    vm.body.setEnabled(true); vm.barrel.setEnabled(true); vm.stock.setEnabled(true); vm.mag.setEnabled(true);
+    vm.body.scaling.set(1,1,1); vm.body.position.set(0.05,0.02,0.30);
+    vm.barrel.scaling.set(1,1,1.1); vm.barrel.position.set(0.05,0.05,0.58);
+    vm.stock.scaling.set(1,1,1); vm.stock.position.set(0.05,0.0,0.08);
+    vm.mag.scaling.set(1,1.1,1); vm.mag.position.set(0.05,-0.1,0.28);
+    vm.mag.rotation.x=0.25;
+    return;
+  }
+  if(weaponId==='m4a1'){
+    vm.body.setEnabled(true); vm.barrel.setEnabled(true); vm.stock.setEnabled(true); vm.mag.setEnabled(true);
+    vm.body.scaling.set(0.95,0.9,1.05); vm.body.position.set(0.05,0.02,0.32);
+    vm.barrel.scaling.set(0.9,0.9,1.2); vm.barrel.position.set(0.05,0.05,0.60);
+    vm.stock.scaling.set(0.9,0.85,1); vm.stock.position.set(0.05,0.0,0.08);
+    vm.mag.scaling.set(0.9,1,0.9); vm.mag.position.set(0.05,-0.1,0.28);
+    return;
+  }
+  if(weaponId==='awp'){
+    vm.body.setEnabled(true); vm.barrel.setEnabled(true); vm.stock.setEnabled(true); vm.mag.setEnabled(true); vm.scope.setEnabled(true);
+    vm.body.scaling.set(1.1,1.05,1.35); vm.body.position.set(0.05,0.0,0.28);
+    vm.barrel.scaling.set(1.1,1.1,1.8); vm.barrel.position.set(0.05,0.04,0.68);
+    vm.stock.scaling.set(1.1,1.1,1.2); vm.stock.position.set(0.05,-0.02,0.02);
+    vm.mag.scaling.set(0.8,0.7,0.8); vm.mag.position.set(0.05,-0.1,0.22);
+    vm.scope.scaling.set(1.2,1.2,1); vm.scope.position.set(0.05,0.12,0.32);
+    return;
+  }
 }
 
 class SBBot {
-  constructor(scene, x, z, team){
-    this.scene = scene;
-    this.team = team || 'T';
-    this.health = 70;
-    this.alive = true;
-    this.speed = 2.0 + Math.random()*0.6;
-    this.shootCooldown = 2.5 + Math.random();
-    this.thinkTimer = 0;
-    this.targetDir = new BABYLON.Vector3(0,0,0);
-    this.animT = Math.random()*10;
-
-    const col = team==='CT'
-      ? new BABYLON.Color3(0.25, 0.45, 0.8)
-      : new BABYLON.Color3(0.9, 0.55, 0.2);
-    const h = sbMakeHumanoid(scene, col, 1);
-    this.root = h.root;
-    this.head = h.head;
-    this.parts = h.parts;
-    this.root.position.set(x, 0, z);
-    // pickable mesh reference for raycast (torso + head)
-    this.mesh = h.torso; // primary pick target
+  constructor(scene,x,z,team){
+    this.scene=scene; this.team=team||'T'; this.health=70; this.alive=true;
+    this.speed=2.0+Math.random()*0.6; this.shootCooldown=2.5+Math.random();
+    this.thinkTimer=0; this.targetDir=new BABYLON.Vector3(0,0,0); this.animT=Math.random()*10;
+    const col=team==='CT'?new BABYLON.Color3(0.25,0.45,0.8):new BABYLON.Color3(0.9,0.55,0.2);
+    const h=sbMakeHumanoid(scene,col,1);
+    this.root=h.root; this.head=h.head; this.parts=h.parts; this.mesh=h.torso;
+    this.root.position.set(x,0,z);
   }
-
   update(dt, playerPos){
-    if(!this.alive) return;
-    if(sbRound.freeze || sbRound.phase !== 'live') return;
-
-    this.thinkTimer -= dt;
-    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
-    this.animT += dt * 6;
-
-    const toPlayer = playerPos.subtract(this.root.position);
-    toPlayer.y = 0;
-    const dist = toPlayer.length();
-
-    if(this.thinkTimer <= 0){
-      this.thinkTimer = 0.8 + Math.random()*1.0;
-      if(dist < 28 && dist > 4){
-        const ang = Math.atan2(toPlayer.x, toPlayer.z) + (Math.random()-0.5)*0.9;
-        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
-      } else if(dist <= 4){
-        const ang = Math.atan2(-toPlayer.x, -toPlayer.z);
-        this.targetDir.set(Math.sin(ang), 0, Math.cos(ang));
-      } else {
-        const ang = Math.random()*Math.PI*2;
-        this.targetDir.set(Math.sin(ang)*0.5, 0, Math.cos(ang)*0.5);
-      }
+    if(!this.alive||sbRound.freeze||sbRound.phase!=='live') return;
+    this.thinkTimer-=dt; this.shootCooldown=Math.max(0,this.shootCooldown-dt); this.animT+=dt*6;
+    const toPlayer=playerPos.subtract(this.root.position); toPlayer.y=0; const dist=toPlayer.length();
+    if(this.thinkTimer<=0){
+      this.thinkTimer=0.8+Math.random();
+      if(dist<28&&dist>4){ const ang=Math.atan2(toPlayer.x,toPlayer.z)+(Math.random()-0.5)*0.9; this.targetDir.set(Math.sin(ang),0,Math.cos(ang)); }
+      else if(dist<=4){ const ang=Math.atan2(-toPlayer.x,-toPlayer.z); this.targetDir.set(Math.sin(ang),0,Math.cos(ang)); }
+      else { const ang=Math.random()*Math.PI*2; this.targetDir.set(Math.sin(ang)*0.5,0,Math.cos(ang)*0.5); }
     }
-
-    if(this.targetDir.lengthSquared() > 0.01){
-      const move = this.targetDir.normalize().scale(this.speed * dt);
-      this.root.position.addInPlace(move);
-      this.root.rotation.y = Math.atan2(this.targetDir.x, this.targetDir.z);
-      // simple walk bob
-      this.root.position.y = Math.abs(Math.sin(this.animT))*0.04;
+    if(this.targetDir.lengthSquared()>0.01){
+      this.root.position.addInPlace(this.targetDir.normalize().scale(this.speed*dt));
+      this.root.rotation.y=Math.atan2(this.targetDir.x,this.targetDir.z);
+      this.root.position.y=Math.abs(Math.sin(this.animT))*0.04;
     }
-
-    this.root.position.x = BABYLON.Scalar.Clamp(this.root.position.x, -42, 42);
-    this.root.position.z = BABYLON.Scalar.Clamp(this.root.position.z, -42, 42);
-
-    if(dist < 16 && dist > 3 && this.shootCooldown <= 0){
-      const face = new BABYLON.Vector3(Math.sin(this.root.rotation.y), 0, Math.cos(this.root.rotation.y));
-      const dir = toPlayer.normalize();
-      if(BABYLON.Vector3.Dot(face, dir) > 0.7){
-        this.shootCooldown = 1.4 + Math.random()*1.2;
-        if(sbPlayer && sbPlayer.isAlive){
-          const dmg = 6 + Math.floor(Math.random()*6);
-          sbPlayer.takeDamage(dmg);
-        }
+    this.root.position.x=BABYLON.Scalar.Clamp(this.root.position.x,-42,42);
+    this.root.position.z=BABYLON.Scalar.Clamp(this.root.position.z,-42,42);
+    if(dist<16&&dist>3&&this.shootCooldown<=0){
+      const face=new BABYLON.Vector3(Math.sin(this.root.rotation.y),0,Math.cos(this.root.rotation.y));
+      if(BABYLON.Vector3.Dot(face,toPlayer.normalize())>0.7){
+        this.shootCooldown=1.4+Math.random()*1.2;
+        if(sbPlayer&&sbPlayer.isAlive) sbPlayer.takeDamage(6+Math.floor(Math.random()*6));
       }
     }
   }
-
-  takeDamage(amount, isHead){
+  takeDamage(amount,isHead){
     if(!this.alive) return false;
-    const dmg = isHead ? amount * 1.8 : amount;
-    this.health -= dmg;
-    SBAudio.hit();
-    // flash red
-    this.parts.forEach(p=>{
-      if(p.material){
-        const old = p.material.diffuseColor.clone();
-        p.material.emissiveColor = new BABYLON.Color3(0.6,0.1,0.1);
-        setTimeout(()=>{ if(p.material) p.material.emissiveColor = BABYLON.Color3.Black(); }, 80);
-      }
-    });
-    if(this.health <= 0){
-      this.die();
-      return true;
-    }
-    return false;
+    this.health-=isHead?amount*1.8:amount; SBAudio.hit();
+    this.parts.forEach(p=>{ if(p.material){ p.material.emissiveColor=new BABYLON.Color3(0.6,0.1,0.1); setTimeout(()=>{if(p.material)p.material.emissiveColor=BABYLON.Color3.Black();},80); }});
+    if(this.health<=0){ this.die(); return true; } return false;
   }
-
-  die(){
-    this.alive = false;
-    this.root.setEnabled(false);
-  }
-
-  dispose(){
-    this.root.dispose();
-  }
-
-  respawn(x, z){
-    this.alive = true;
-    this.health = 70;
-    this.root.setEnabled(true);
-    this.root.position.set(x, 0, z);
-    this.shootCooldown = 2.5 + Math.random();
-  }
+  die(){ this.alive=false; this.root.setEnabled(false); }
+  dispose(){ this.root.dispose(); }
 }
 
 class SBPlayer {
   constructor(scene){
-    this.scene = scene;
-    this.walkSpeed = 5.2;
-    this.sprintMult = 1.32;
-    this.jumpForce = 7.2;
-    this.gravity = -22;
-    this.airControl = 0.35;
-    this.velocity = new BABYLON.Vector3(0,0,0);
-    this.onGround = true;
-    this.isAlive = true;
+    this.scene=scene;
+    this.walkSpeed=5.2; this.sprintMult=1.32; this.jumpForce=7.2; this.gravity=-22; this.airControl=0.35;
+    this.velocity=new BABYLON.Vector3(0,0,0); this.onGround=true; this.isAlive=true;
+    this.health=100; this.armor=0; this.hasHelmet=false; this.money=800; this.nades=0; this.kills=0; this.stepTimer=0;
+    this.ads=false; this.baseFov=1.05;
 
-    this.health = 100;
-    this.armor = 0;
-    this.hasHelmet = false;
-    this.money = 800;
-    this.nades = 0;
-    this.kills = 0;
-    this.stepTimer = 0;
+    this.camera=new BABYLON.UniversalCamera('sbCam', new BABYLON.Vector3(0,1.7,-22), scene);
+    this.camera.fov=this.baseFov; this.camera.minZ=0.05; this.camera.maxZ=400; this.camera.inertia=0; this.camera.angularSensibility=1;
+    scene.activeCamera=this.camera;
+    this.vm=sbCreateViewmodel(scene,this.camera);
 
-    this.camera = new BABYLON.UniversalCamera('sbCam', new BABYLON.Vector3(0, 1.7, -18), scene);
-    this.camera.fov = 1.05;
-    this.camera.minZ = 0.05;
-    this.camera.maxZ = 400;
-    this.camera.inertia = 0;
-    this.camera.angularSensibility = 1;
-    scene.activeCamera = this.camera;
-
-    this.vm = sbCreateViewmodel(scene, this.camera);
-
-    this.owned = new Set(['knife','glock']);
-    this.currentWeaponId = 'glock';
-    this.weapon = SBWeapons.glock;
-    this.ammo = this.weapon.magSize;
-    this.reserve = this.weapon.maxReserve;
-    this.isReloading = false;
-    this.reloadEnd = 0;
-    this.lastShot = 0;
-    this.recoilPitch = 0;
-    this.recoilYaw = 0;
-    this.vmKick = 0;
-
-    this.updateViewmodel();
-    this.updateUI();
-  }
-
-  updateViewmodel(){
-    const w = this.weapon;
-    if(w.type === 'melee'){
-      this.vm.gun.setEnabled(false);
-      this.vm.barrel.setEnabled(false);
-      this.vm.mag.setEnabled(false);
-      // hand forward like holding knife
-      this.vm.hand.position.set(0.15, -0.02, 0.35);
-      this.vm.arm.rotation.x = -0.3;
-    } else {
-      this.vm.gun.setEnabled(true);
-      this.vm.barrel.setEnabled(true);
-      this.vm.mag.setEnabled(true);
-      this.vm.hand.position.set(0.08, -0.04, 0.18);
-      this.vm.arm.rotation.x = 0.15;
-      // scale by weapon type
-      if(w.type === 'sniper'){
-        this.vm.gun.scaling.set(1, 1, 1.4);
-        this.vm.barrel.scaling.set(1, 1, 1.6);
-      } else if(w.type === 'pistol'){
-        this.vm.gun.scaling.set(0.9, 0.85, 0.65);
-        this.vm.barrel.scaling.set(0.9, 0.9, 0.55);
-        this.vm.mag.scaling.set(0.8, 0.7, 0.8);
-      } else {
-        this.vm.gun.scaling.set(1, 1, 1);
-        this.vm.barrel.scaling.set(1, 1, 1);
-        this.vm.mag.scaling.set(1, 1, 1);
-      }
-    }
+    this.owned=new Set(['knife','glock']); this.currentWeaponId='glock'; this.weapon=SBWeapons.glock;
+    this.ammo=this.weapon.magSize; this.reserve=this.weapon.maxReserve;
+    this.isReloading=false; this.reloadEnd=0; this.lastShot=0; this.recoilPitch=0; this.recoilYaw=0; this.vmKick=0;
+    sbApplyWeaponModel(this.vm,'glock'); this.updateUI();
   }
 
   update(dt){
-    if(!this.isAlive) return;
-    dt = Math.min(dt, 0.05);
+    if(!this.isAlive||!sbGameActive) return;
+    dt=Math.min(dt,0.05);
+    const {dx,dy}=SBInput.consumeMouse();
+    const sens=this.ads?0.0009:0.00215;
+    this.camera.rotation.y+=dx*sens; this.camera.rotation.x+=dy*sens;
+    this.camera.rotation.x=BABYLON.Scalar.Clamp(this.camera.rotation.x,-1.45,1.45);
+    this.recoilPitch*=0.86; this.recoilYaw*=0.86;
+    this.camera.rotation.x+=this.recoilPitch*dt*60; this.camera.rotation.y+=this.recoilYaw*dt*60;
+    this.vmKick*=0.85; this.vm.root.rotation.x=this.vmKick; this.vm.root.position.z=0.55-this.vmKick*0.15;
 
-    const {dx, dy} = SBInput.consumeMouse();
-    const sens = 0.00215;
-    this.camera.rotation.y += dx * sens;
-    this.camera.rotation.x += dy * sens;
-    this.camera.rotation.x = BABYLON.Scalar.Clamp(this.camera.rotation.x, -1.45, 1.45);
-
-    this.recoilPitch *= 0.86;
-    this.recoilYaw *= 0.86;
-    this.camera.rotation.x += this.recoilPitch * dt * 60;
-    this.camera.rotation.y += this.recoilYaw * dt * 60;
-
-    // viewmodel kick recovery
-    this.vmKick *= 0.85;
-    this.vm.root.rotation.x = this.vmKick;
-    this.vm.root.position.z = 0.55 - this.vmKick * 0.15;
-
-    if(sbRound.freeze) {
-      this.updateUI();
-      return;
+    // AWP ADS
+    const wantAds = SBInput.mouse.right && this.weapon.id==='awp' && !this.isReloading;
+    if(wantAds!==this.ads){
+      this.ads=wantAds;
+      this.camera.fov=this.ads?0.28:this.baseFov;
+      document.getElementById('sbScope')?.classList.toggle('on', this.ads);
+      document.getElementById('sbCrosshair')&&(document.getElementById('sbCrosshair').style.opacity=this.ads?'0':'0.9');
+      this.vm.root.setEnabled(!this.ads);
     }
 
-    let ix=0, iz=0;
-    if(SBInput.isDown('KeyW')||SBInput.isDown('ArrowUp'))    iz += 1;
-    if(SBInput.isDown('KeyS')||SBInput.isDown('ArrowDown'))  iz -= 1;
-    if(SBInput.isDown('KeyA')||SBInput.isDown('ArrowLeft'))  ix -= 1;
-    if(SBInput.isDown('KeyD')||SBInput.isDown('ArrowRight')) ix += 1;
+    if(sbRound.freeze){ this.updateUI(); return; }
 
-    const forward = this.camera.getDirection(BABYLON.Vector3.Forward());
-    const right   = this.camera.getDirection(BABYLON.Vector3.Right());
-    forward.y = 0; right.y = 0;
-    forward.normalize(); right.normalize();
-
-    let move = forward.scale(iz).add(right.scale(ix));
-    if(move.lengthSquared()>0) move.normalize();
-
-    const sprint = SBInput.isDown('ShiftLeft') && iz>0 && !SBInput.mouse.right;
-    let speed = this.walkSpeed * (sprint ? this.sprintMult : 1);
-    speed *= 1 - (this.weapon.movePenalty||0);
-
-    if(this.onGround){
-      this.velocity.x = move.x * speed;
-      this.velocity.z = move.z * speed;
-    } else {
-      this.velocity.x += move.x * speed * this.airControl * dt * 10;
-      this.velocity.z += move.z * speed * this.airControl * dt * 10;
-      const h = new BABYLON.Vector3(this.velocity.x,0,this.velocity.z);
-      if(h.length() > speed*1.1){ h.normalize().scaleInPlace(speed*1.1); this.velocity.x=h.x; this.velocity.z=h.z; }
+    let ix=0,iz=0;
+    if(SBInput.isDown('KeyW')||SBInput.isDown('ArrowUp')) iz+=1;
+    if(SBInput.isDown('KeyS')||SBInput.isDown('ArrowDown')) iz-=1;
+    if(SBInput.isDown('KeyA')||SBInput.isDown('ArrowLeft')) ix-=1;
+    if(SBInput.isDown('KeyD')||SBInput.isDown('ArrowRight')) ix+=1;
+    const forward=this.camera.getDirection(BABYLON.Vector3.Forward());
+    const right=this.camera.getDirection(BABYLON.Vector3.Right());
+    forward.y=0; right.y=0; forward.normalize(); right.normalize();
+    let move=forward.scale(iz).add(right.scale(ix)); if(move.lengthSquared()>0) move.normalize();
+    const sprint=SBInput.isDown('ShiftLeft')&&iz>0&&!this.ads;
+    let speed=this.walkSpeed*(sprint?this.sprintMult:1)*(this.ads?0.55:1);
+    speed*=1-(this.weapon.movePenalty||0);
+    if(this.onGround){ this.velocity.x=move.x*speed; this.velocity.z=move.z*speed; }
+    else {
+      this.velocity.x+=move.x*speed*this.airControl*dt*10; this.velocity.z+=move.z*speed*this.airControl*dt*10;
+      const h=new BABYLON.Vector3(this.velocity.x,0,this.velocity.z);
+      if(h.length()>speed*1.1){ h.normalize().scaleInPlace(speed*1.1); this.velocity.x=h.x; this.velocity.z=h.z; }
     }
-
-    if(SBInput.isDown('Space') && this.onGround){
-      this.velocity.y = this.jumpForce;
-      this.onGround = false;
-    }
-
-    this.velocity.y += this.gravity * dt;
+    if(SBInput.isDown('Space')&&this.onGround){ this.velocity.y=this.jumpForce; this.onGround=false; }
+    this.velocity.y+=this.gravity*dt;
     this.camera.position.addInPlace(this.velocity.scale(dt));
+    if(this.camera.position.y<1.7){ this.camera.position.y=1.7; this.velocity.y=0; this.onGround=true; }
+    this.camera.position.x=BABYLON.Scalar.Clamp(this.camera.position.x,-42,42);
+    this.camera.position.z=BABYLON.Scalar.Clamp(this.camera.position.z,-42,42);
 
-    if(this.camera.position.y < 1.7){
-      this.camera.position.y = 1.7;
-      this.velocity.y = 0;
-      this.onGround = true;
-    }
-
-    const lim = 44;
-    this.camera.position.x = BABYLON.Scalar.Clamp(this.camera.position.x, -lim, lim);
-    this.camera.position.z = BABYLON.Scalar.Clamp(this.camera.position.z, -lim, lim);
-
-    // footsteps
-    if(this.onGround && move.lengthSquared()>0.1){
-      this.stepTimer -= dt;
-      if(this.stepTimer <= 0){
-        this.stepTimer = sprint ? 0.28 : 0.4;
-        SBAudio.step();
-      }
-    }
-
-    if(this.isReloading && performance.now() >= this.reloadEnd) this.finishReload();
-    if(SBInput.isDown('KeyR') && !this.isReloading && this.weapon.type !== 'melee' && this.ammo < this.weapon.magSize && this.reserve > 0) this.startReload();
-
-    if(SBInput.mouse.left && !this.isReloading && !sbBuyOpen && sbRound.phase === 'live') this.tryShoot();
-    if(SBInput.isDown('KeyG') && sbRound.phase === 'live') this.throwNade();
-
+    if(this.onGround&&move.lengthSquared()>0.1){ this.stepTimer-=dt; if(this.stepTimer<=0){ this.stepTimer=sprint?0.28:0.4; SBAudio.step(); }}
+    if(this.isReloading&&performance.now()>=this.reloadEnd) this.finishReload();
+    if(SBInput.isDown('KeyR')&&!this.isReloading&&this.weapon.type!=='melee'&&this.ammo<this.weapon.magSize&&this.reserve>0) this.startReload();
+    if(SBInput.mouse.left&&!this.isReloading&&!sbBuyOpen&&sbRound.phase==='live') this.tryShoot();
+    if(SBInput.isDown('KeyG')&&sbRound.phase==='live') this.throwNade();
     if(SBInput.isDown('Digit1')) this.switchWeapon('ak47');
     if(SBInput.isDown('Digit2')) this.switchWeapon('m4a1');
     if(SBInput.isDown('Digit3')) this.switchWeapon('awp');
     if(SBInput.isDown('Digit4')) this.switchWeapon('deagle');
-    if(SBInput.isDown('KeyQ') || SBInput.isDown('Digit5')) this.switchWeapon('knife');
-
+    if(SBInput.isDown('KeyQ')||SBInput.isDown('Digit5')) this.switchWeapon('knife');
     this.updateUI();
+    if(sbMode==='online'&&sbRoomChannel) this.broadcastState();
   }
 
   tryShoot(){
-    const now = performance.now();
-    const delay = 60000 / Math.max(1, this.weapon.rpm);
-    if(now - this.lastShot < delay) return;
-
-    if(this.weapon.type === 'melee'){
-      this.lastShot = now;
-      SBAudio.shoot('knife');
-      this.vmKick = 0.25;
-      this.doRaycast(this.weapon.damage, this.weapon.range || 2.4);
-      return;
-    }
-
-    if(this.ammo <= 0){
-      if(this.reserve > 0 && !this.isReloading) this.startReload();
-      return;
-    }
-    this.lastShot = now;
-    this.ammo--;
-    this.recoilPitch -= this.weapon.recoil.y * 0.012;
-    this.recoilYaw   += (Math.random()-0.5) * this.weapon.recoil.x * 0.025;
-    this.vmKick = 0.12 + this.weapon.recoil.y * 0.02;
-
+    const now=performance.now(); const delay=60000/Math.max(1,this.weapon.rpm);
+    if(now-this.lastShot<delay) return;
+    if(this.weapon.type==='melee'){ this.lastShot=now; SBAudio.shoot('knife'); this.vmKick=0.25; this.doRaycast(this.weapon.damage,this.weapon.range); return; }
+    if(this.ammo<=0){ if(this.reserve>0&&!this.isReloading) this.startReload(); return; }
+    this.lastShot=now; this.ammo--;
+    const recoilMul=this.ads?0.35:1;
+    this.recoilPitch-=this.weapon.recoil.y*0.012*recoilMul;
+    this.recoilYaw+=(Math.random()-0.5)*this.weapon.recoil.x*0.025*recoilMul;
+    this.vmKick=0.12+this.weapon.recoil.y*0.02;
     SBAudio.shoot(this.weapon.id);
-    const cross = document.getElementById('sbCrosshair');
-    if(cross){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'), 60); }
-
-    this.doRaycast(this.weapon.damage, this.weapon.range || 200);
+    const cross=document.getElementById('sbCrosshair');
+    if(cross&&!this.ads){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'),60); }
+    const spread=this.ads? (this.weapon.spread||0)*0.15 : (this.weapon.spread||0);
+    this.doRaycast(this.weapon.damage, this.weapon.range||200, spread);
+    if(sbMode==='online'&&sbRoomChannel){
+      sbRoomChannel.send({ type:'broadcast', event:'shot', payload:{ id:sbMyId, w:this.weapon.id }});
+    }
   }
 
-  doRaycast(damage, range){
-    const origin = this.camera.position.clone();
-    const dir = this.camera.getDirection(BABYLON.Vector3.Forward());
-    if(this.weapon.type !== 'melee'){
-      dir.x += (Math.random()-0.5) * (this.weapon.spread||0);
-      dir.y += (Math.random()-0.5) * (this.weapon.spread||0);
-      dir.z += (Math.random()-0.5) * (this.weapon.spread||0);
-      dir.normalize();
-    }
-    const ray = new BABYLON.Ray(origin, dir, range);
-    const hit = this.scene.pickWithRay(ray, (mesh)=>{
-      return mesh.name === 'torso' || mesh.name === 'botHead' || mesh.name === 'armL' || mesh.name === 'armR';
-    });
-    if(hit && hit.hit && hit.pickedMesh){
-      const isHead = hit.pickedMesh.name === 'botHead';
+  doRaycast(damage, range, spread){
+    spread=spread??0;
+    const origin=this.camera.position.clone();
+    const dir=this.camera.getDirection(BABYLON.Vector3.Forward());
+    if(this.weapon.type!=='melee'){ dir.x+=(Math.random()-0.5)*spread; dir.y+=(Math.random()-0.5)*spread; dir.z+=(Math.random()-0.5)*spread; dir.normalize(); }
+    const ray=new BABYLON.Ray(origin,dir,range);
+    // bots
+    const hit=this.scene.pickWithRay(ray, m=> m.name==='torso'||m.name==='botHead'||m.name==='armL'||m.name==='armR');
+    if(hit&&hit.hit&&hit.pickedMesh){
+      const isHead=hit.pickedMesh.name==='botHead';
       for(const bot of sbBots){
         if(!bot.alive) continue;
-        if(bot.parts.includes(hit.pickedMesh) || hit.pickedMesh === bot.mesh || hit.pickedMesh === bot.head){
-          const killed = bot.takeDamage(damage, isHead);
-          if(killed){
-            this.kills++;
-            const reward = isHead ? 450 : 300;
-            this.money += reward;
-            SBAudio.kill();
-            this.pushKillfeed(isHead ? 'Headshot +$'+reward : 'Kill +$'+reward);
-          }
-          break;
+        if(bot.parts.includes(hit.pickedMesh)||hit.pickedMesh===bot.head){
+          const killed=bot.takeDamage(damage,isHead);
+          if(killed){ this.kills++; const reward=isHead?450:300; this.money+=reward; SBAudio.kill(); this.pushKillfeed(isHead?'Headshot +$'+reward:'Kill +$'+reward); }
+          return;
+        }
+      }
+      // remote players
+      for(const id in sbRemotePlayers){
+        const rp=sbRemotePlayers[id];
+        if(rp.parts&&rp.parts.includes(hit.pickedMesh)){
+          if(sbRoomChannel) sbRoomChannel.send({ type:'broadcast', event:'hit', payload:{ target:id, dmg:isHead?Math.floor(damage*1.8):damage, from:sbMyId, hs:isHead }});
+          SBAudio.hit();
+          return;
         }
       }
     }
   }
 
   throwNade(){
-    if(this.nades <= 0) return;
-    if(this._nadeCd && performance.now() < this._nadeCd) return;
-    this._nadeCd = performance.now() + 900;
-    this.nades--;
-    const origin = this.camera.position.clone();
-    const dir = this.camera.getDirection(BABYLON.Vector3.Forward());
-    dir.y += 0.25;
-    dir.normalize();
-
-    const ball = BABYLON.MeshBuilder.CreateSphere('nade', {diameter:0.25}, this.scene);
+    if(this.nades<=0) return;
+    if(this._nadeCd&&performance.now()<this._nadeCd) return;
+    this._nadeCd=performance.now()+900; this.nades--;
+    const origin=this.camera.position.clone();
+    const dir=this.camera.getDirection(BABYLON.Vector3.Forward()); dir.y+=0.25; dir.normalize();
+    const ball=BABYLON.MeshBuilder.CreateSphere('nade',{diameter:0.25},this.scene);
     ball.position.copyFrom(origin.add(dir.scale(1.2)));
-    const mat = new BABYLON.StandardMaterial('nadeMat', this.scene);
-    mat.diffuseColor = new BABYLON.Color3(0.2, 0.55, 0.25);
-    ball.material = mat;
-
-    sbGrenades.push({
-      mesh: ball,
-      vel: dir.scale(18),
-      life: 1.6,
-      exploded: false
-    });
+    const mat=new BABYLON.StandardMaterial('nadeMat',this.scene); mat.diffuseColor=new BABYLON.Color3(0.2,0.55,0.25); ball.material=mat;
+    sbGrenades.push({ mesh:ball, vel:dir.scale(18), life:1.6, exploded:false });
   }
 
   pushKillfeed(text){
-    const el = document.getElementById('sbKillfeed');
-    if(!el) return;
-    const row = document.createElement('div');
-    row.textContent = text;
-    el.prepend(row);
-    setTimeout(()=> row.remove(), 2500);
-    while(el.children.length > 5) el.lastChild.remove();
+    const el=document.getElementById('sbKillfeed'); if(!el) return;
+    const row=document.createElement('div'); row.textContent=text; el.prepend(row);
+    setTimeout(()=>row.remove(),2500); while(el.children.length>5) el.lastChild.remove();
   }
-
-  startReload(){
-    if(this.isReloading || this.reserve<=0 || this.weapon.type==='melee') return;
-    this.isReloading = true;
-    this.reloadEnd = performance.now() + this.weapon.reloadTime * 1000;
-    SBAudio.reload();
-  }
-  finishReload(){
-    const need = this.weapon.magSize - this.ammo;
-    const take = Math.min(need, this.reserve);
-    this.ammo += take; this.reserve -= take;
-    this.isReloading = false;
-  }
-
+  startReload(){ if(this.isReloading||this.reserve<=0||this.weapon.type==='melee') return; this.isReloading=true; this.reloadEnd=performance.now()+this.weapon.reloadTime*1000; SBAudio.reload(); if(this.ads){ this.ads=false; this.camera.fov=this.baseFov; document.getElementById('sbScope')?.classList.remove('on'); this.vm.root.setEnabled(true);} }
+  finishReload(){ const need=this.weapon.magSize-this.ammo; const take=Math.min(need,this.reserve); this.ammo+=take; this.reserve-=take; this.isReloading=false; }
   switchWeapon(id){
-    if(!SBWeapons[id]) return;
-    if(id !== 'knife' && !this.owned.has(id)) return;
-    if(this.currentWeaponId === id) return;
-    this.currentWeaponId = id;
-    this.weapon = SBWeapons[id];
-    if(this.weapon.type === 'melee'){
-      this.ammo = 0; this.reserve = 0;
-    } else {
-      this.ammo = this.weapon.magSize;
-      this.reserve = this.weapon.maxReserve;
-    }
-    this.isReloading = false;
-    this.updateViewmodel();
+    if(!SBWeapons[id]) return; if(id!=='knife'&&!this.owned.has(id)) return; if(this.currentWeaponId===id) return;
+    if(this.ads){ this.ads=false; this.camera.fov=this.baseFov; document.getElementById('sbScope')?.classList.remove('on'); this.vm.root.setEnabled(true); }
+    this.currentWeaponId=id; this.weapon=SBWeapons[id];
+    if(this.weapon.type==='melee'){ this.ammo=0; this.reserve=0; } else { this.ammo=this.weapon.magSize; this.reserve=this.weapon.maxReserve; }
+    this.isReloading=false; sbApplyWeaponModel(this.vm,id);
   }
-
-  buyWeapon(id){
-    const w = SBWeapons[id];
-    if(!w || w.price <= 0) return false;
-    if(this.money < w.price) return false;
-    if(this.owned.has(id)){ this.switchWeapon(id); return true; }
-    this.money -= w.price;
-    this.owned.add(id);
-    this.switchWeapon(id);
-    SBAudio.buy();
-    return true;
-  }
+  buyWeapon(id){ const w=SBWeapons[id]; if(!w||w.price<=0) return false; if(this.money<w.price) return false; if(this.owned.has(id)){ this.switchWeapon(id); return true;} this.money-=w.price; this.owned.add(id); this.switchWeapon(id); SBAudio.buy(); return true; }
   buyArmor(type){
-    if(type==='kevlar'){
-      if(this.money < 650) return false;
-      this.money -= 650; this.armor = 100; SBAudio.buy(); return true;
-    }
-    if(type==='helmet'){
-      if(this.money < 1000) return false;
-      this.money -= 1000; this.armor = 100; this.hasHelmet = true; SBAudio.buy(); return true;
-    }
-    if(type==='he'){
-      if(this.money < 300) return false;
-      if(this.nades >= 2) return false;
-      this.money -= 300; this.nades++; SBAudio.buy(); return true;
-    }
+    if(type==='kevlar'){ if(this.money<650) return false; this.money-=650; this.armor=100; SBAudio.buy(); return true; }
+    if(type==='helmet'){ if(this.money<1000) return false; this.money-=1000; this.armor=100; this.hasHelmet=true; SBAudio.buy(); return true; }
+    if(type==='he'){ if(this.money<300||this.nades>=2) return false; this.money-=300; this.nades++; SBAudio.buy(); return true; }
     return false;
   }
-
   takeDamage(amount){
-    if(!this.isAlive || sbRound.phase !== 'live') return;
-    let rem = amount;
-    if(this.armor > 0){
-      const abs = Math.min(this.armor, rem * 0.5);
-      this.armor -= abs; rem -= abs;
-    }
-    this.health -= rem;
-    SBAudio.hurt();
-    if(this.health <= 0){ this.health=0; this.die(); }
+    if(!this.isAlive||sbRound.phase!=='live') return;
+    let rem=amount; if(this.armor>0){ const abs=Math.min(this.armor,rem*0.5); this.armor-=abs; rem-=abs; }
+    this.health-=rem; SBAudio.hurt(); if(this.health<=0){ this.health=0; this.die(); }
   }
-
   die(){
-    this.isAlive = false;
-    document.getElementById('sbDeath')?.classList.add('show');
-    setTimeout(()=> sbEndRound(false), 1200);
+    this.isAlive=false; document.getElementById('sbDeath')?.classList.add('show');
+    if(sbMode==='bots') setTimeout(()=>sbEndRound(false),1200);
+    if(sbMode==='online'&&sbRoomChannel) sbRoomChannel.send({ type:'broadcast', event:'death', payload:{ id:sbMyId }});
   }
-
   respawn(){
-    this.isAlive = true;
-    this.health = 100;
-    this.camera.position.set(0, 1.7, -18);
-    this.camera.rotation.set(0, 0, 0);
-    this.velocity.set(0,0,0);
-    if(this.weapon.type !== 'melee'){
-      this.ammo = this.weapon.magSize;
-      this.reserve = Math.max(this.reserve, this.weapon.maxReserve);
-    }
-    this.isReloading = false;
-    document.getElementById('sbDeath')?.classList.remove('show');
-    SBInput.reset();
+    this.isAlive=true; this.health=100;
+    const spawns=sbMapSpawns(sbCurrentMap);
+    const s=spawns[Math.floor(Math.random()*spawns.length)];
+    this.camera.position.set(s[0],1.7,s[1]); this.camera.rotation.set(0,s[2]||0,0); this.velocity.set(0,0,0);
+    if(this.weapon.type!=='melee'){ this.ammo=this.weapon.magSize; this.reserve=Math.max(this.reserve,this.weapon.maxReserve); }
+    this.isReloading=false; this.ads=false; this.camera.fov=this.baseFov;
+    document.getElementById('sbScope')?.classList.remove('on'); this.vm.root.setEnabled(true);
+    document.getElementById('sbDeath')?.classList.remove('show'); SBInput.reset();
   }
-
+  broadcastState(){
+    if(!this._bc || performance.now()-this._bc>50){
+      this._bc=performance.now();
+      sbRoomChannel.send({ type:'broadcast', event:'pos', payload:{
+        id:sbMyId,
+        x:this.camera.position.x, y:this.camera.position.y, z:this.camera.position.z,
+        ry:this.camera.rotation.y, rx:this.camera.rotation.x,
+        alive:this.isAlive, w:this.currentWeaponId
+      }});
+    }
+  }
   updateUI(){
-    const set = (id, v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
-    const hpF = document.getElementById('sbHpFill');
-    const arF = document.getElementById('sbArmorFill');
-    set('sbHpText', Math.ceil(this.health));
-    if(hpF) hpF.style.width = this.health + '%';
-    set('sbArmorText', Math.ceil(this.armor));
-    if(arF) arF.style.width = this.armor + '%';
-    if(this.weapon.type === 'melee'){
-      set('sbAmmoCur', '∞'); set('sbAmmoRes', '');
-    } else {
-      set('sbAmmoCur', this.ammo); set('sbAmmoRes', this.reserve);
-    }
-    set('sbWeaponName', this.isReloading ? this.weapon.name+' (перезарядка...)' : this.weapon.name + (this.weapon.type==='melee'?'  [Q]':''));
-    set('sbMoney', '$'+this.money);
-    set('sbKills', 'Kills: '+this.kills);
-    set('sbNades', 'Grenades: '+this.nades+'  [G]');
-
-    const timer = document.getElementById('sbTimer');
-    const score = document.getElementById('sbScore');
-    if(timer){
-      const m = Math.floor(Math.max(0,sbRound.timeLeft)/60);
-      const s = Math.floor(Math.max(0,sbRound.timeLeft)%60);
-      const phase = sbRound.phase==='buy' ? 'BUY ' : (sbRound.phase==='ended'?'END ':'');
-      timer.textContent = phase + m + ':' + String(s).padStart(2,'0');
-    }
-    if(score) score.textContent = 'CT '+sbRound.scoreCT+' : '+sbRound.scoreT+' T  · R'+sbRound.number;
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+    const hpF=document.getElementById('sbHpFill'), arF=document.getElementById('sbArmorFill');
+    set('sbHpText', Math.ceil(this.health)); if(hpF) hpF.style.width=this.health+'%';
+    set('sbArmorText', Math.ceil(this.armor)); if(arF) arF.style.width=this.armor+'%';
+    if(this.weapon.type==='melee'){ set('sbAmmoCur','∞'); set('sbAmmoRes',''); }
+    else { set('sbAmmoCur',this.ammo); set('sbAmmoRes',this.reserve); }
+    set('sbWeaponName', this.isReloading?this.weapon.name+' (перезарядка...)':this.weapon.name+(this.weapon.type==='melee'?' [Q]':(this.weapon.id==='awp'?' [ПКМ]':'')));
+    set('sbMoney','$'+this.money); set('sbKills','Kills: '+this.kills); set('sbNades','Grenades: '+this.nades+' [G]');
+    const timer=document.getElementById('sbTimer'), score=document.getElementById('sbScore');
+    if(timer){ const m=Math.floor(Math.max(0,sbRound.timeLeft)/60), s=Math.floor(Math.max(0,sbRound.timeLeft)%60);
+      timer.textContent=(sbRound.phase==='buy'?'BUY ':sbRound.phase==='ended'?'END ':'')+m+':'+String(s).padStart(2,'0'); }
+    if(score) score.textContent='CT '+sbRound.scoreCT+' : '+sbRound.scoreT+' T · R'+sbRound.number;
   }
 }
 
 function sbUpdateGrenades(dt){
-  for(let i=sbGrenades.length-1; i>=0; i--){
-    const g = sbGrenades[i];
-    g.life -= dt;
-    g.vel.y -= 18 * dt;
-    g.mesh.position.addInPlace(g.vel.scale(dt));
-    // bounce on ground
-    if(g.mesh.position.y < 0.15){
-      g.mesh.position.y = 0.15;
-      g.vel.y *= -0.35;
-      g.vel.x *= 0.7;
-      g.vel.z *= 0.7;
-    }
-    if(g.life <= 0 && !g.exploded){
-      g.exploded = true;
-      SBAudio.nade();
-      const pos = g.mesh.position.clone();
-      // damage bots in radius
-      sbBots.forEach(bot=>{
-        if(!bot.alive) return;
-        const d = BABYLON.Vector3.Distance(bot.root.position, pos);
-        if(d < 6){
-          const dmg = Math.floor(90 * (1 - d/6));
-          const killed = bot.takeDamage(dmg, false);
-          if(killed && sbPlayer){
-            sbPlayer.kills++;
-            sbPlayer.money += 300;
-            sbPlayer.pushKillfeed('Nade kill +$300');
-            SBAudio.kill();
-          }
-        }
-      });
-      // splash on player
-      if(sbPlayer && sbPlayer.isAlive){
-        const d = BABYLON.Vector3.Distance(sbPlayer.camera.position, pos);
-        if(d < 5) sbPlayer.takeDamage(Math.floor(40*(1-d/5)));
-      }
-      g.mesh.dispose();
-      sbGrenades.splice(i,1);
+  for(let i=sbGrenades.length-1;i>=0;i--){
+    const g=sbGrenades[i]; g.life-=dt; g.vel.y-=18*dt; g.mesh.position.addInPlace(g.vel.scale(dt));
+    if(g.mesh.position.y<0.15){ g.mesh.position.y=0.15; g.vel.y*=-0.35; g.vel.x*=0.7; g.vel.z*=0.7; }
+    if(g.life<=0&&!g.exploded){
+      g.exploded=true; SBAudio.nade(); const pos=g.mesh.position.clone();
+      sbBots.forEach(bot=>{ if(!bot.alive) return; const d=BABYLON.Vector3.Distance(bot.root.position,pos); if(d<6){ const killed=bot.takeDamage(Math.floor(90*(1-d/6)),false); if(killed&&sbPlayer){ sbPlayer.kills++; sbPlayer.money+=300; sbPlayer.pushKillfeed('Nade kill +$300'); SBAudio.kill(); }}});
+      if(sbPlayer&&sbPlayer.isAlive){ const d=BABYLON.Vector3.Distance(sbPlayer.camera.position,pos); if(d<5) sbPlayer.takeDamage(Math.floor(40*(1-d/5))); }
+      g.mesh.dispose(); sbGrenades.splice(i,1);
     }
   }
 }
 
 function sbCreateScene(){
-  const scene = new BABYLON.Scene(sbEngine);
-  scene.clearColor = new BABYLON.Color4(0.52, 0.68, 0.86, 1);
-  scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.007;
-  scene.fogColor = new BABYLON.Color3(0.55, 0.7, 0.85);
-
-  const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.3,1,0.4), scene);
-  hemi.intensity = 0.95;
-  hemi.groundColor = new BABYLON.Color3(0.25,0.25,0.3);
-  const dir = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-0.45,-1,0.35), scene);
-  dir.intensity = 0.75;
+  const scene=new BABYLON.Scene(sbEngine);
+  scene.clearColor=new BABYLON.Color4(0.52,0.68,0.86,1);
+  scene.fogMode=BABYLON.Scene.FOGMODE_EXP2; scene.fogDensity=0.007; scene.fogColor=new BABYLON.Color3(0.55,0.7,0.85);
+  const hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0.3,1,0.4),scene); hemi.intensity=0.95;
+  const dir=new BABYLON.DirectionalLight('dir',new BABYLON.Vector3(-0.45,-1,0.35),scene); dir.intensity=0.75;
   return scene;
 }
 
-function sbCreateMap(scene){
-  const ground = BABYLON.MeshBuilder.CreateGround('ground', {width:90, height:90}, scene);
-  const gmat = new BABYLON.StandardMaterial('gmat', scene);
-  gmat.diffuseColor = new BABYLON.Color3(0.34, 0.38, 0.32);
-  gmat.specularColor = new BABYLON.Color3(0.04,0.04,0.04);
-  ground.material = gmat;
-
-  const colors = [
-    [0.72,0.38,0.32],[0.32,0.52,0.72],[0.82,0.68,0.28],
-    [0.42,0.68,0.42],[0.55,0.42,0.68],[0.62,0.62,0.65],[0.88,0.55,0.22]
-  ];
-  function box(x,y,z,w,h,d,col){
-    const m = BABYLON.MeshBuilder.CreateBox('b', {width:w,height:h,depth:d}, scene);
-    m.position.set(x,y,z);
-    const mat = new BABYLON.StandardMaterial('m'+Math.random(), scene);
-    mat.diffuseColor = new BABYLON.Color3(col[0],col[1],col[2]);
-    mat.specularColor = new BABYLON.Color3(0.08,0.08,0.08);
-    m.material = mat;
-    return m;
-  }
-
-  // central site
-  box(0,1.2,0, 8,2.4,8, colors[5]);
-  box(0,3.2,0, 3,1.6,3, colors[2]);
-
-  // mid boxes / cover
-  const cover = [
-    [-12,1,-8,4,2,3], [12,1,-8,4,2,3],
-    [-10,1.5,10,3,3,5], [10,1.5,10,3,3,5],
-    [-20,1.2,0,3,2.4,8], [20,1.2,0,3,2.4,8],
-    [0,1,-16,6,2,3], [0,1,18,6,2,4],
-    [-6,0.7,-4,2,1.4,2], [6,0.7,5,2,1.4,2],
-    [-15,2,18,4,4,4], [16,2,16,4,4,3],
-    [-22,1.5,-14,5,3,4], [22,1.5,-12,5,3,4]
-  ];
-  cover.forEach((p,i)=> box(p[0],p[1],p[2],p[3],p[4],p[5], colors[i%colors.length]));
-
-  // ramp-like steps
-  box(-8,0.4, -20, 4, 0.8, 3, colors[5]);
-  box(-8,0.9, -22, 4, 0.8, 2, colors[5]);
-
-  // walls
-  const wallC = [0.28,0.28,0.32];
-  box(0,3.5,46,92,7,1.8, wallC);
-  box(0,3.5,-46,92,7,1.8, wallC);
-  box(-46,3.5,0,1.8,7,92, wallC);
-  box(46,3.5,0,1.8,7,92, wallC);
+function sbBox(scene,x,y,z,w,h,d,col){
+  const m=BABYLON.MeshBuilder.CreateBox('b',{width:w,height:h,depth:d},scene);
+  m.position.set(x,y,z);
+  const mat=new BABYLON.StandardMaterial('m'+Math.random(),scene);
+  mat.diffuseColor=new BABYLON.Color3(col[0],col[1],col[2]); mat.specularColor=new BABYLON.Color3(0.06,0.06,0.06);
+  m.material=mat; return m;
 }
 
-function sbSpawnBots(){
-  sbBots.forEach(b=> b.dispose());
-  sbBots = [];
-  const spots = [
-    [14, 22], [-16, 24], [20, 14],
-    [-20, 10], [10, 28]
-  ];
-  for(let i=0;i<3;i++){
-    const [x,z] = spots[i];
-    const bot = new SBBot(sbScene, x+(Math.random()-0.5)*2, z+(Math.random()-0.5)*2, 'T');
-    sbBots.push(bot);
+function sbClearMap(){
+  if(!sbScene) return;
+  sbScene.meshes.slice().forEach(m=>{
+    if(m.name==='b'||m.name==='ground') m.dispose();
+  });
+}
+
+function sbMapSpawns(map){
+  if(map==='mirage') return [[-20, -20, 0.5],[20, -18, -0.5],[0, -24, 0]];
+  if(map==='inferno') return [[-18, -22, 0.3],[18, -20, -0.4],[0, -26, 0]];
+  return [[-16, -24, 0.4],[16, -22, -0.3],[0, -26, 0]]; // dust
+}
+
+function sbCreateMap(scene, mapId){
+  sbClearMap();
+  const ground=BABYLON.MeshBuilder.CreateGround('ground',{width:90,height:90},scene);
+  const gmat=new BABYLON.StandardMaterial('gmat',scene);
+  gmat.specularColor=new BABYLON.Color3(0.04,0.04,0.04);
+  const wall=[0.28,0.28,0.32];
+  // boundary
+  sbBox(scene,0,3.5,46,92,7,1.8,wall); sbBox(scene,0,3.5,-46,92,7,1.8,wall);
+  sbBox(scene,-46,3.5,0,1.8,7,92,wall); sbBox(scene,46,3.5,0,1.8,7,92,wall);
+
+  if(mapId==='mirage'){
+    gmat.diffuseColor=new BABYLON.Color3(0.72,0.62,0.42); ground.material=gmat;
+    // A site / mid / B inspired
+    sbBox(scene,-18,1.5,12,10,3,10,[0.75,0.65,0.45]);
+    sbBox(scene,18,1.5,14,10,3,8,[0.75,0.65,0.45]);
+    sbBox(scene,0,1.2,0,4,2.4,14,[0.55,0.5,0.4]); // mid
+    sbBox(scene,-8,1,-8,3,2,6,[0.6,0.55,0.4]);
+    sbBox(scene,8,1,-6,3,2,5,[0.6,0.55,0.4]);
+    sbBox(scene,0,2,22,8,4,4,[0.7,0.6,0.42]);
+    sbBox(scene,-22,1.5,-10,5,3,6,[0.65,0.55,0.4]);
+    sbBox(scene,22,1.5,-8,5,3,6,[0.65,0.55,0.4]);
+    sbBox(scene,-4,0.7,6,2,1.4,2,[0.5,0.45,0.35]);
+    sbBox(scene,5,0.7,8,2,1.4,2,[0.5,0.45,0.35]);
+  } else if(mapId==='inferno'){
+    gmat.diffuseColor=new BABYLON.Color3(0.45,0.42,0.35); ground.material=gmat;
+    sbBox(scene,-16,1.5,10,8,3,12,[0.55,0.4,0.3]); // banana-ish
+    sbBox(scene,14,1.5,12,10,3,10,[0.5,0.38,0.28]);
+    sbBox(scene,0,1, -2,5,2,10,[0.48,0.4,0.32]);
+    sbBox(scene,-10,2,-14,4,4,4,[0.42,0.35,0.28]);
+    sbBox(scene,12,1.2,-12,6,2.4,5,[0.5,0.4,0.3]);
+    sbBox(scene,0,1.5,20,12,3,6,[0.55,0.42,0.32]);
+    sbBox(scene,-20,1,0,4,2,8,[0.45,0.38,0.3]);
+    sbBox(scene,20,1,2,4,2,8,[0.45,0.38,0.3]);
+  } else { // dust
+    gmat.diffuseColor=new BABYLON.Color3(0.62,0.55,0.38); ground.material=gmat;
+    // long / A / B / mid / tunnels vibe
+    sbBox(scene,-18,1.5,8,6,3,16,[0.7,0.58,0.35]); // long doors side
+    sbBox(scene,16,1.5,10,8,3,10,[0.68,0.55,0.34]); // B
+    sbBox(scene,0,1.2,2,5,2.4,12,[0.55,0.48,0.32]); // mid
+    sbBox(scene,-6,1,-12,10,2,4,[0.6,0.5,0.35]);
+    sbBox(scene,8,1.5,-8,4,3,6,[0.58,0.48,0.32]);
+    sbBox(scene,0,2,20,8,4,5,[0.65,0.52,0.33]); // A site ramp area
+    sbBox(scene,-22,1,-4,4,2,8,[0.55,0.48,0.35]);
+    sbBox(scene,22,1.2,-2,4,2.4,6,[0.55,0.48,0.35]);
+    sbBox(scene,-3,0.6,8,2.2,1.2,2.2,[0.5,0.42,0.3]);
+    sbBox(scene,4,0.6,6,2.2,1.2,2.2,[0.5,0.42,0.3]);
+    sbBox(scene,0,0.5,-20,6,1,3,[0.58,0.5,0.36]);
+  }
+}
+
+function sbSpawnBots(n){
+  sbBots.forEach(b=>b.dispose()); sbBots=[];
+  const spots=[[14,22],[-16,24],[20,14],[-20,10],[10,28],[-12,16],[18,20],[-22,18]];
+  n=Math.max(1,Math.min(8,n|0));
+  for(let i=0;i<n;i++){
+    const [x,z]=spots[i%spots.length];
+    sbBots.push(new SBBot(sbScene, x+(Math.random()-0.5)*2, z+(Math.random()-0.5)*2, 'T'));
   }
 }
 
 function sbStartRound(){
-  sbRound.phase = 'buy';
-  sbRound.timeLeft = 15;
-  sbRound.freeze = true;
-  // clear nades
-  sbGrenades.forEach(g=> g.mesh.dispose());
-  sbGrenades = [];
-  if(sbPlayer){
-    sbPlayer.respawn();
-    sbPlayer.money = Math.min(16000, sbPlayer.money + 1000);
-    if(sbRound.number <= 2 && sbPlayer.armor < 50) sbPlayer.armor = 50;
-  }
-  sbSpawnBots();
+  sbRound.phase='buy'; sbRound.timeLeft=15; sbRound.freeze=true;
+  sbGrenades.forEach(g=>g.mesh.dispose()); sbGrenades=[];
+  if(sbPlayer){ sbPlayer.respawn(); sbPlayer.money=Math.min(16000,sbPlayer.money+1000); if(sbRound.number<=2&&sbPlayer.armor<50) sbPlayer.armor=50; }
+  if(sbMode==='bots') sbSpawnBots(sbBotCount);
 }
 
-function sbGoLive(){
-  sbRound.phase = 'live';
-  sbRound.timeLeft = 90;
-  sbRound.freeze = false;
-  if(sbBuyOpen) sbToggleBuy();
-}
-
+function sbGoLive(){ sbRound.phase='live'; sbRound.timeLeft=90; sbRound.freeze=false; if(sbBuyOpen) sbToggleBuy(); }
 function sbEndRound(playerWon){
-  if(sbRound.phase === 'ended') return;
-  sbRound.phase = 'ended';
-  sbRound.freeze = true;
-  if(playerWon){
-    sbRound.scoreCT++;
-    if(sbPlayer) sbPlayer.money = Math.min(16000, sbPlayer.money + 2700);
-  } else {
-    sbRound.scoreT++;
-    if(sbPlayer) sbPlayer.money = Math.min(16000, sbPlayer.money + 1400);
-  }
-  setTimeout(()=>{
-    sbRound.number++;
-    sbStartRound();
-  }, 4000);
+  if(sbRound.phase==='ended') return; sbRound.phase='ended'; sbRound.freeze=true;
+  if(playerWon){ sbRound.scoreCT++; if(sbPlayer) sbPlayer.money=Math.min(16000,sbPlayer.money+2700); }
+  else { sbRound.scoreT++; if(sbPlayer) sbPlayer.money=Math.min(16000,sbPlayer.money+1400); }
+  setTimeout(()=>{ sbRound.number++; sbStartRound(); },4000);
 }
-
 function sbUpdateRound(dt){
-  if(sbRound.phase === 'ended') return;
-  sbRound.timeLeft -= dt;
-  if(sbRound.phase === 'buy' && sbRound.timeLeft <= 0) sbGoLive();
-  else if(sbRound.phase === 'live'){
-    const aliveBots = sbBots.filter(b=>b.alive).length;
-    if(aliveBots === 0) sbEndRound(true);
-    else if(sbRound.timeLeft <= 0) sbEndRound(false);
+  if(sbRound.phase==='ended'||!sbGameActive) return;
+  sbRound.timeLeft-=dt;
+  if(sbRound.phase==='buy'&&sbRound.timeLeft<=0) sbGoLive();
+  else if(sbRound.phase==='live'&&sbMode==='bots'){
+    if(sbBots.filter(b=>b.alive).length===0) sbEndRound(true);
+    else if(sbRound.timeLeft<=0) sbEndRound(false);
   }
 }
 
 function sbToggleBuy(){
-  sbBuyOpen = !sbBuyOpen;
-  const menu = document.getElementById('sbBuyMenu');
-  if(sbBuyOpen){
-    menu?.classList.add('open');
-    document.exitPointerLock();
-  } else {
-    menu?.classList.remove('open');
-    if(sbRound.phase !== 'buy') sbCanvas?.requestPointerLock();
+  if(!sbGameActive) return;
+  sbBuyOpen=!sbBuyOpen;
+  const menu=document.getElementById('sbBuyMenu');
+  if(sbBuyOpen){ menu?.classList.add('open'); document.exitPointerLock(); }
+  else { menu?.classList.remove('open'); if(sbRound.phase!=='buy') sbCanvas?.requestPointerLock(); }
+}
+
+function sbSetMode(mode){
+  sbMode=mode;
+  document.getElementById('sbModeBots')?.classList.toggle('active', mode==='bots');
+  document.getElementById('sbModeOnline')?.classList.toggle('active', mode==='online');
+  document.getElementById('sbBotsOptions').style.display=mode==='bots'?'block':'none';
+  document.getElementById('sbOnlineOptions').style.display=mode==='online'?'block':'none';
+}
+
+function sbShowGameUI(show){
+  const ui=document.getElementById('sbUi');
+  if(ui) ui.style.display=show?'block':'none';
+  document.getElementById('sbMainMenu')?.classList.toggle('hidden', show);
+}
+
+function sbEnsureEngine(){
+  if(sbStarted) return;
+  sbCanvas=document.getElementById('sbCanvas'); if(!sbCanvas) return;
+  sbStarted=true;
+  sbEngine=new BABYLON.Engine(sbCanvas,true,{stencil:true,preserveDrawingBuffer:true},true);
+  sbScene=sbCreateScene();
+  SBInput.init(sbCanvas);
+  sbPlayer=new SBPlayer(sbScene);
+  sbCreateMap(sbScene,'dust');
+  sbEngine.runRenderLoop(()=>{
+    const delta=Math.min(sbEngine.getDeltaTime()/1000,0.05);
+    if(sbGameActive){
+      sbUpdateRound(delta);
+      if(sbPlayer) sbPlayer.update(delta);
+      const ppos=sbPlayer?sbPlayer.camera.position:BABYLON.Vector3.Zero();
+      sbBots.forEach(b=>b.update(delta,ppos));
+      sbUpdateGrenades(delta);
+    }
+    if(sbScene) sbScene.render();
+  });
+  window.addEventListener('resize', ()=>{ if(sbEngine) sbEngine.resize(); });
+  document.querySelectorAll('#sbBuyMenu [data-weapon]').forEach(btn=> btn.addEventListener('click',()=>sbPlayer?.buyWeapon(btn.getAttribute('data-weapon'))));
+  document.querySelectorAll('#sbBuyMenu [data-item]').forEach(btn=> btn.addEventListener('click',()=>sbPlayer?.buyArmor(btn.getAttribute('data-item'))));
+  document.getElementById('sbBuyClose')?.addEventListener('click',()=>sbToggleBuy());
+  window.addEventListener('keydown', e=>{
+    if(!sbStarted) return;
+    if(e.code==='KeyB'&&sbGameActive){ e.preventDefault(); sbToggleBuy(); }
+    if(e.code==='Escape'){
+      if(sbBuyOpen) sbToggleBuy();
+      else if(sbGameActive){ // back to menu pause-ish
+        sbGameActive=false; document.exitPointerLock();
+        document.getElementById('sbScope')?.classList.remove('on');
+        sbShowGameUI(false);
+      }
+    }
+  });
+  const bindHold=(el,code)=>{ if(!el) return; const on=e=>{e.preventDefault();SBInput.set(code,true);}; const off=e=>{e.preventDefault();SBInput.set(code,false);};
+    el.addEventListener('touchstart',on,{passive:false}); el.addEventListener('touchend',off); el.addEventListener('touchcancel',off);
+    el.addEventListener('mousedown',on); el.addEventListener('mouseup',off); el.addEventListener('mouseleave',off); };
+  document.querySelectorAll('#sbDpad .sb-btn').forEach(btn=>bindHold(btn,btn.dataset.key));
+  bindHold(document.getElementById('sbJumpBtn'),'Space');
+  document.getElementById('sbFullscreenBtn')?.addEventListener('click',()=>{
+    const wrap=document.getElementById('sbCanvasWrap');
+    if(!document.fullscreenElement) wrap?.requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.();
+    setTimeout(()=>sbEngine?.resize(),150);
+  });
+}
+
+function sbStartBotsGame(){
+  sbEnsureEngine();
+  sbMode='bots';
+  sbBotCount=parseInt(document.getElementById('sbBotCount')?.value||'3',10)||3;
+  sbCurrentMap=document.getElementById('sbMapSelect')?.value||'dust';
+  sbCreateMap(sbScene,sbCurrentMap);
+  sbRound={ phase:'buy', timeLeft:15, scoreCT:0, scoreT:0, number:1, freeze:true };
+  if(sbPlayer){ sbPlayer.money=800; sbPlayer.kills=0; sbPlayer.nades=0; sbPlayer.owned=new Set(['knife','glock']); sbPlayer.switchWeapon('glock'); }
+  sbShowGameUI(true); sbGameActive=true; sbStartRound();
+  setTimeout(()=>sbCanvas?.requestPointerLock(),200);
+}
+
+function sbRandCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
+
+async function sbCreateRoom(){
+  sbEnsureEngine();
+  sbMode='online'; sbIsHost=true; sbOnlineStarted=false;
+  sbCurrentMap=document.getElementById('sbOnlineMapSelect')?.value||'dust';
+  sbRoomCode=sbRandCode();
+  sbMyId=(typeof currentUser!=='undefined'&&currentUser?.id)||('p_'+Math.random().toString(36).slice(2,9));
+  const info=document.getElementById('sbLobbyInfo');
+  if(info) info.innerHTML=`Код комнаты: <b style="color:var(--amber)">${sbRoomCode}</b><br>Карта: ${sbCurrentMap}<br>Ждём игроков…`;
+  document.getElementById('sbStartOnlineBtn').style.display='block';
+
+  if(sbRoomChannel){ try{ await sb.removeChannel(sbRoomChannel); }catch(e){} }
+  sbRoomChannel = sb.channel('bs_'+sbRoomCode, { config:{ broadcast:{ self:false }, presence:{ key:sbMyId } } });
+  sbRoomChannel.on('presence', { event:'sync' }, ()=>{
+    const state=sbRoomChannel.presenceState();
+    const count=Object.keys(state).length;
+    if(info) info.innerHTML=`Код: <b style="color:var(--amber)">${sbRoomCode}</b> · карта ${sbCurrentMap}<br>В комнате: ${count} игрок(ов)`;
+  });
+  sbRoomChannel.on('broadcast', { event:'pos' }, ({payload})=> sbUpsertRemote(payload));
+  sbRoomChannel.on('broadcast', { event:'hit' }, ({payload})=>{
+    if(payload.target===sbMyId && sbPlayer) sbPlayer.takeDamage(payload.dmg||20);
+  });
+  sbRoomChannel.on('broadcast', { event:'start' }, ({payload})=>{
+    if(!sbIsHost) sbBeginOnlineMatch(payload.map||sbCurrentMap);
+  });
+  sbRoomChannel.on('broadcast', { event:'death' }, ({payload})=>{
+    if(sbRemotePlayers[payload.id]) sbRemotePlayers[payload.id].root.setEnabled(false);
+  });
+  await sbRoomChannel.subscribe(async (status)=>{
+    if(status==='SUBSCRIBED'){
+      await sbRoomChannel.track({ id:sbMyId, name:(typeof currentUser!=='undefined'&&currentUser?.username)||'Host' });
+    }
+  });
+}
+
+async function sbJoinRoom(){
+  sbEnsureEngine();
+  const code=(document.getElementById('sbJoinCode')?.value||'').trim().toUpperCase();
+  if(code.length<4){ alert('Введи код комнаты'); return; }
+  sbMode='online'; sbIsHost=false; sbOnlineStarted=false; sbRoomCode=code;
+  sbMyId=(typeof currentUser!=='undefined'&&currentUser?.id)||('p_'+Math.random().toString(36).slice(2,9));
+  const info=document.getElementById('sbLobbyInfo');
+  if(info) info.innerHTML=`Подключение к <b>${code}</b>…`;
+  document.getElementById('sbStartOnlineBtn').style.display='none';
+
+  if(sbRoomChannel){ try{ await sb.removeChannel(sbRoomChannel); }catch(e){} }
+  sbRoomChannel = sb.channel('bs_'+code, { config:{ broadcast:{ self:false }, presence:{ key:sbMyId } } });
+  sbRoomChannel.on('presence', { event:'sync' }, ()=>{
+    const state=sbRoomChannel.presenceState();
+    if(info) info.innerHTML=`Комната <b style="color:var(--amber)">${code}</b><br>Игроков: ${Object.keys(state).length}<br>Жди старта от хоста`;
+  });
+  sbRoomChannel.on('broadcast', { event:'pos' }, ({payload})=> sbUpsertRemote(payload));
+  sbRoomChannel.on('broadcast', { event:'hit' }, ({payload})=>{
+    if(payload.target===sbMyId && sbPlayer) sbPlayer.takeDamage(payload.dmg||20);
+  });
+  sbRoomChannel.on('broadcast', { event:'start' }, ({payload})=>{
+    sbBeginOnlineMatch(payload.map||'dust');
+  });
+  sbRoomChannel.on('broadcast', { event:'death' }, ({payload})=>{
+    if(sbRemotePlayers[payload.id]) sbRemotePlayers[payload.id].root.setEnabled(false);
+  });
+  await sbRoomChannel.subscribe(async (status)=>{
+    if(status==='SUBSCRIBED'){
+      await sbRoomChannel.track({ id:sbMyId, name:(typeof currentUser!=='undefined'&&currentUser?.username)||'Player' });
+      if(info) info.innerHTML=`В комнате <b style="color:var(--amber)">${code}</b><br>Жди старта от хоста`;
+    }
+  });
+}
+
+function sbUpsertRemote(p){
+  if(!p||!p.id||p.id===sbMyId||!sbScene) return;
+  let rp=sbRemotePlayers[p.id];
+  if(!rp){
+    const col=new BABYLON.Color3(0.3,0.7,0.45);
+    const h=sbMakeHumanoid(sbScene,col,1);
+    rp={ root:h.root, head:h.head, parts:h.parts, mesh:h.torso };
+    sbRemotePlayers[p.id]=rp;
   }
+  if(p.alive===false){ rp.root.setEnabled(false); return; }
+  rp.root.setEnabled(true);
+  rp.root.position.set(p.x, 0, p.z);
+  rp.root.rotation.y=p.ry||0;
+}
+
+function sbBeginOnlineMatch(map){
+  sbCurrentMap=map||'dust';
+  sbCreateMap(sbScene,sbCurrentMap);
+  sbBots.forEach(b=>b.dispose()); sbBots=[];
+  sbRound={ phase:'buy', timeLeft:12, scoreCT:0, scoreT:0, number:1, freeze:true };
+  if(sbPlayer){ sbPlayer.money=800; sbPlayer.kills=0; sbPlayer.nades=0; sbPlayer.owned=new Set(['knife','glock']); sbPlayer.switchWeapon('glock'); sbPlayer.respawn(); }
+  sbShowGameUI(true); sbGameActive=true; sbOnlineStarted=true; sbStartRound();
+  setTimeout(()=>sbCanvas?.requestPointerLock(),200);
+}
+
+function sbStartOnlineGame(){
+  if(!sbIsHost||!sbRoomChannel) return;
+  sbRoomChannel.send({ type:'broadcast', event:'start', payload:{ map:sbCurrentMap } });
+  sbBeginOnlineMatch(sbCurrentMap);
 }
 
 function initSandboxGame(){
-  if(sbStarted) return;
-  sbCanvas = document.getElementById('sbCanvas');
-  if(!sbCanvas) return;
-  sbStarted = true;
-
-  sbEngine = new BABYLON.Engine(sbCanvas, true, {stencil:true, preserveDrawingBuffer:true}, true);
-  sbScene = sbCreateScene();
-  SBInput.init(sbCanvas);
-  sbPlayer = new SBPlayer(sbScene);
-  sbCreateMap(sbScene);
-  sbStartRound();
-
-  document.querySelectorAll('#sbBuyMenu [data-weapon]').forEach(btn=>{
-    btn.addEventListener('click', ()=> sbPlayer.buyWeapon(btn.getAttribute('data-weapon')));
-  });
-  document.querySelectorAll('#sbBuyMenu [data-item]').forEach(btn=>{
-    btn.addEventListener('click', ()=> sbPlayer.buyArmor(btn.getAttribute('data-item')));
-  });
-  document.getElementById('sbBuyClose')?.addEventListener('click', ()=> sbToggleBuy());
-
-  window.addEventListener('keydown', e=>{
-    if(e.code === 'KeyB' && sbStarted){ e.preventDefault(); sbToggleBuy(); }
-    if(e.code === 'Escape' && sbBuyOpen) sbToggleBuy();
-  });
-
-  sbEngine.runRenderLoop(()=>{
-    const delta = Math.min(sbEngine.getDeltaTime()/1000, 0.05);
-    sbUpdateRound(delta);
-    if(sbPlayer) sbPlayer.update(delta);
-    const ppos = sbPlayer ? sbPlayer.camera.position : BABYLON.Vector3.Zero();
-    sbBots.forEach(b=> b.update(delta, ppos));
-    sbUpdateGrenades(delta);
-    sbScene.render();
-  });
-
-  window.addEventListener('resize', ()=>{ if(sbEngine) sbEngine.resize(); });
-
-  const bindHold = (el, code)=>{
-    if(!el) return;
-    const on  = e=>{ e.preventDefault(); SBInput.set(code, true); };
-    const off = e=>{ e.preventDefault(); SBInput.set(code, false); };
-    el.addEventListener('touchstart', on, {passive:false});
-    el.addEventListener('touchend', off);
-    el.addEventListener('touchcancel', off);
-    el.addEventListener('mousedown', on);
-    el.addEventListener('mouseup', off);
-    el.addEventListener('mouseleave', off);
-  };
-  document.querySelectorAll('#sbDpad .sb-btn').forEach(btn=> bindHold(btn, btn.dataset.key));
-  bindHold(document.getElementById('sbJumpBtn'), 'Space');
-
-  document.getElementById('sbFullscreenBtn')?.addEventListener('click', ()=>{
-    const wrap = document.getElementById('sbCanvasWrap');
-    if(!document.fullscreenElement) wrap?.requestFullscreen?.().catch(()=>{});
-    else document.exitFullscreen?.();
-    setTimeout(()=> sbEngine?.resize(), 150);
-  });
+  sbEnsureEngine();
+  setTimeout(()=>sbEngine?.resize(),50);
 }
 
 function initApp(){
