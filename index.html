@@ -760,7 +760,7 @@
         <h3 style="font-size:15px; margin-bottom:8px;">🧱 BlockStrike — тактический шутер в браузере</h3>
         <div class="dg-rules">
           Меню: режим с ботами или онлайн-комната · карты Dust/Mirage/Inferno (упрощённые) · свой вид оружия · прицел AWP (ПКМ).<br>
-          <b>WASD</b> · <b>Shift</b> · <b>Пробел</b> · <b>ЛКМ</b> огонь · <b>ПКМ</b> прицел AWP · <b>G</b> граната · <b>R</b> · <b>B</b> магазин · <b>1–4</b> · <b>Q</b> нож · <b>Esc</b> меню.<br>
+          <b>WASD</b> · <b>Shift</b> бег · <b>Ctrl</b> присед · <b>Пробел</b> · <b>ЛКМ</b> · <b>ПКМ</b> AWP · <b>G</b> · <b>R</b> · <b>B</b> · <b>1–4</b> · <b>Q</b> · <b>Esc</b>.<br>
           Онлайн: создай комнату → скинь код другу → хост жмёт «Старт». Синхронизация через Supabase Realtime (упрощённая).
         </div>
       </div>
@@ -778,11 +778,16 @@
                 <button type="button" id="sbModeOnline" onclick="sbSetMode('online')">🌐 Онлайн</button>
               </div>
               <div id="sbBotsOptions">
+                <label>Сторона</label>
+                <div class="sb-mode-btns">
+                  <button type="button" class="active" id="sbTeamT" onclick="sbSetTeam('T')">🟠 T</button>
+                  <button type="button" id="sbTeamCT" onclick="sbSetTeam('CT')">🔵 CT</button>
+                </div>
                 <label>Карта</label>
                 <select id="sbMapSelect">
-                  <option value="dust">Dust II (упрощ.)</option>
-                  <option value="mirage">Mirage (упрощ.)</option>
-                  <option value="inferno">Inferno (упрощ.)</option>
+                  <option value="dust">Dust II</option>
+                  <option value="mirage">Mirage</option>
+                  <option value="inferno">Inferno</option>
                 </select>
                 <label>Количество ботов (1–8)</label>
                 <input type="number" id="sbBotCount" min="1" max="8" value="3">
@@ -818,11 +823,16 @@
                 <button type="button" class="sb-menu-btn ghost" onclick="sbCloseSkins()">Назад</button>
               </div>
               <div id="sbOnlineOptions" style="display:none;">
+                <label>Сторона</label>
+                <div class="sb-mode-btns">
+                  <button type="button" class="active" id="sbTeamT2" onclick="sbSetTeam('T')">🟠 T</button>
+                  <button type="button" id="sbTeamCT2" onclick="sbSetTeam('CT')">🔵 CT</button>
+                </div>
                 <label>Карта (при создании)</label>
                 <select id="sbOnlineMapSelect">
-                  <option value="dust">Dust II (упрощ.)</option>
-                  <option value="mirage">Mirage (упрощ.)</option>
-                  <option value="inferno">Inferno (упрощ.)</option>
+                  <option value="dust">Dust II</option>
+                  <option value="mirage">Mirage</option>
+                  <option value="inferno">Inferno</option>
                 </select>
                 <button type="button" class="sb-menu-btn" onclick="sbCreateRoom()">Создать комнату</button>
                 <label>Или ввести код комнаты</label>
@@ -913,6 +923,9 @@
               <option value="mirage">Mirage</option>
               <option value="inferno">Inferno</option>
             </select>
+            <label style="font-size:11px;color:#aaa;">Название карты</label>
+            <input type="text" id="sbEditMapName" placeholder="Название" maxlength="40" style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #444;background:#12141c;color:#fff;">
+            <button type="button" onclick="sbEditorRenameMap()">✎ Переименовать</button>
             <label style="font-size:11px;color:#aaa;">Фигура</label>
             <select id="sbEditShape">
               <option value="box">Куб</option>
@@ -3230,6 +3243,8 @@ let sbBots = [];
 let sbRound = { phase:'buy', timeLeft:15, scoreCT:0, scoreT:0, number:1, freeze:true };
 let sbGrenades = [];
 let sbMode = 'bots'; // bots | online
+let sbTeam = 'T'; // T | CT
+let sbMapNames = { dust:'Dust II', mirage:'Mirage', inferno:'Inferno' };
 let sbBotCount = 3;
 let sbCurrentMap = 'dust';
 let sbRemotePlayers = {}; // id -> { mesh, root, data }
@@ -3461,6 +3476,75 @@ function sbApplyWeaponModel(vm, weaponId){
   }
 }
 
+
+/* ---- Solid collisions for map geometry ---- */
+function sbCollectSolids(){
+  if(!sbScene) return [];
+  const solids = [];
+  sbScene.meshes.forEach(m=>{
+    if(!m || m.name==='ground') return;
+    if(m.name!=='b' && m.name!=='wall' && m.name!=='c') return;
+    if(!m.isEnabled()) return;
+    try{
+      m.computeWorldMatrix(true);
+      const bi = m.getBoundingInfo().boundingBox;
+      const min = bi.minimumWorld;
+      const max = bi.maximumWorld;
+      solids.push({ minX:min.x, maxX:max.x, minY:min.y, maxY:max.y, minZ:min.z, maxZ:max.z });
+    }catch(e){}
+  });
+  return solids;
+}
+
+// Horizontal cylinder (XZ) vs AABB: push out of solid
+function sbResolveXZ(x, z, radius, solids){
+  for(let i=0;i<solids.length;i++){
+    const s = solids[i];
+    // only collide if roughly at body height handled by caller filter, use all solids in XZ
+    const nearestX = Math.max(s.minX, Math.min(x, s.maxX));
+    const nearestZ = Math.max(s.minZ, Math.min(z, s.maxZ));
+    let dx = x - nearestX;
+    let dz = z - nearestZ;
+    const distSq = dx*dx + dz*dz;
+    if(distSq >= radius*radius) continue;
+    // inside or overlapping
+    if(distSq < 1e-8){
+      // center inside box — push out via smallest axis
+      const left = x - s.minX, right = s.maxX - x;
+      const near = z - s.minZ, far = s.maxZ - z;
+      const m = Math.min(left, right, near, far);
+      if(m===left) x = s.minX - radius;
+      else if(m===right) x = s.maxX + radius;
+      else if(m===near) z = s.minZ - radius;
+      else z = s.maxZ + radius;
+    } else {
+      const dist = Math.sqrt(distSq);
+      const push = (radius - dist) / dist;
+      x += dx * push;
+      z += dz * push;
+    }
+  }
+  return { x, z };
+}
+
+// Highest surface under feet (within radius), for standing on boxes
+function sbFloorUnder(x, z, radius, eyeHeight, solids){
+  // ground at y=0 → eye at eyeHeight
+  let best = 0;
+  for(let i=0;i<solids.length;i++){
+    const s = solids[i];
+    // expand top face by radius in xz
+    if(x+radius < s.minX || x-radius > s.maxX || z+radius < s.minZ || z-radius > s.maxZ) continue;
+    if(s.maxY > best && s.maxY < 40) best = s.maxY;
+  }
+  return best;
+}
+
+// Filter solids that intersect body vertical range for wall collision
+function sbWallSolids(solids, footY, headY){
+  return solids.filter(s=> s.maxY > footY+0.15 && s.minY < headY-0.1);
+}
+
 class SBBot {
   constructor(scene,x,z,team){
     this.scene=scene; this.team=team||'T'; this.health=70; this.alive=true;
@@ -3482,12 +3566,24 @@ class SBBot {
       else { const ang=Math.random()*Math.PI*2; this.targetDir.set(Math.sin(ang)*0.5,0,Math.cos(ang)*0.5); }
     }
     if(this.targetDir.lengthSquared()>0.01){
-      this.root.position.addInPlace(this.targetDir.normalize().scale(this.speed*dt));
+      const step = this.targetDir.normalize().scale(this.speed*dt);
+      let bx = this.root.position.x + step.x;
+      let bz = this.root.position.z + step.z;
+      const solids = sbCollectSolids();
+      const bodyR = 0.4;
+      const footY = 0.1, headY = 1.7;
+      const walls = sbWallSolids(solids, footY, headY);
+      const resolved = sbResolveXZ(bx, bz, bodyR, walls);
+      bx = resolved.x; bz = resolved.z;
+      this.root.position.x = BABYLON.Scalar.Clamp(bx, -42, 42);
+      this.root.position.z = BABYLON.Scalar.Clamp(bz, -42, 42);
       this.root.rotation.y=Math.atan2(this.targetDir.x,this.targetDir.z);
-      this.root.position.y=Math.abs(Math.sin(this.animT))*0.04;
+      const floorTop = sbFloorUnder(this.root.position.x, this.root.position.z, bodyR*0.8, 1.0, solids);
+      this.root.position.y = floorTop + Math.abs(Math.sin(this.animT))*0.04;
+    } else {
+      this.root.position.x=BABYLON.Scalar.Clamp(this.root.position.x,-42,42);
+      this.root.position.z=BABYLON.Scalar.Clamp(this.root.position.z,-42,42);
     }
-    this.root.position.x=BABYLON.Scalar.Clamp(this.root.position.x,-42,42);
-    this.root.position.z=BABYLON.Scalar.Clamp(this.root.position.z,-42,42);
     if(dist<16&&dist>3&&this.shootCooldown<=0){
       const face=new BABYLON.Vector3(Math.sin(this.root.rotation.y),0,Math.cos(this.root.rotation.y));
       if(BABYLON.Vector3.Dot(face,toPlayer.normalize())>0.7){
@@ -3510,6 +3606,7 @@ class SBPlayer {
   constructor(scene){
     this.scene=scene;
     this.walkSpeed=5.2; this.sprintMult=1.32; this.jumpForce=7.2; this.gravity=-22; this.airControl=0.35;
+    this.team=sbTeam||'T'; this.crouching=false; this.standH=1.7; this.crouchH=1.05;
     this.velocity=new BABYLON.Vector3(0,0,0); this.onGround=true; this.isAlive=true;
     this.health=100; this.armor=0; this.hasHelmet=false; this.money=800; this.nades=0; this.kills=0; this.stepTimer=0;
     this.ads=false; this.baseFov=1.05;
@@ -3582,8 +3679,11 @@ class SBPlayer {
     const right=this.camera.getDirection(BABYLON.Vector3.Right());
     forward.y=0; right.y=0; forward.normalize(); right.normalize();
     let move=forward.scale(iz).add(right.scale(ix)); if(move.lengthSquared()>0) move.normalize();
-    const sprint=SBInput.isDown('ShiftLeft')&&iz>0&&!this.ads;
-    let speed=this.walkSpeed*(sprint?this.sprintMult:1)*(this.ads?0.55:1);
+    // crouch (height applied in collision step relative to floor)
+    this.crouching = SBInput.isDown('ControlLeft') || SBInput.isDown('ControlRight');
+
+    const sprint=SBInput.isDown('ShiftLeft')&&iz>0&&!this.ads&&!this.crouching;
+    let speed=this.walkSpeed*(sprint?this.sprintMult:1)*(this.ads?0.55:1)*(this.crouching?0.55:1);
     speed*=1-(this.weapon.movePenalty||0);
     if(this.onGround){ this.velocity.x=move.x*speed; this.velocity.z=move.z*speed; }
     else {
@@ -3593,10 +3693,43 @@ class SBPlayer {
     }
     if(SBInput.isDown('Space')&&this.onGround){ this.velocity.y=this.jumpForce; this.onGround=false; }
     this.velocity.y+=this.gravity*dt;
-    this.camera.position.addInPlace(this.velocity.scale(dt));
-    if(this.camera.position.y<1.7){ this.camera.position.y=1.7; this.velocity.y=0; this.onGround=true; }
-    this.camera.position.x=BABYLON.Scalar.Clamp(this.camera.position.x,-42,42);
-    this.camera.position.z=BABYLON.Scalar.Clamp(this.camera.position.z,-42,42);
+
+    const solids = sbCollectSolids();
+    const bodyR = 0.35;
+    const eyeH = this.crouching ? this.crouchH : this.standH;
+
+    // move XZ with collision
+    let nx = this.camera.position.x + this.velocity.x * dt;
+    let nz = this.camera.position.z + this.velocity.z * dt;
+    const footY = this.camera.position.y - eyeH;
+    const headY = this.camera.position.y + 0.15;
+    const walls = sbWallSolids(solids, footY + 0.3, headY);
+    const resolved = sbResolveXZ(nx, nz, bodyR, walls);
+    nx = resolved.x; nz = resolved.z;
+
+    // move Y
+    let ny = this.camera.position.y + this.velocity.y * dt;
+    const floorTop = sbFloorUnder(nx, nz, bodyR*0.85, eyeH, solids);
+    const minEye = floorTop + eyeH;
+    this.onGround = false;
+    if(ny <= minEye + 0.02 && this.velocity.y <= 0){
+      ny = minEye;
+      this.velocity.y = 0;
+      this.onGround = true;
+    }
+    // ceiling
+    for(const s of walls){
+      if(nx+bodyR > s.minX && nx-bodyR < s.maxX && nz+bodyR > s.minZ && nz-bodyR < s.maxZ){
+        if(ny + 0.2 > s.minY && this.camera.position.y + 0.2 <= s.minY + 0.05 && this.velocity.y > 0){
+          ny = s.minY - 0.2;
+          this.velocity.y = 0;
+        }
+      }
+    }
+
+    this.camera.position.x = BABYLON.Scalar.Clamp(nx, -42, 42);
+    this.camera.position.z = BABYLON.Scalar.Clamp(nz, -42, 42);
+    this.camera.position.y = ny;
 
     if(this.onGround&&move.lengthSquared()>0.1){ this.stepTimer-=dt; if(this.stepTimer<=0){ this.stepTimer=sprint?0.28:0.4; SBAudio.step(); }}
     if(this.isReloading&&performance.now()>=this.reloadEnd) this.finishReload();
@@ -3715,9 +3848,11 @@ class SBPlayer {
   }
   respawn(){
     this.isAlive=true; this.health=100;
-    const spawns=sbMapSpawns(sbCurrentMap);
+    this.team = sbTeam || this.team || 'T';
+    const spawns=sbMapSpawns(sbCurrentMap, this.team);
     const s=spawns[Math.floor(Math.random()*spawns.length)];
-    this.camera.position.set(s[0],1.7,s[1]); this.camera.rotation.set(0,s[2]||0,0); this.velocity.set(0,0,0);
+    this.camera.position.set(s[0], this.standH, s[1]); this.camera.rotation.set(0,s[2]||0,0); this.velocity.set(0,0,0);
+    this.crouching=false;
     if(this.weapon.type!=='melee'){ this.ammo=this.weapon.magSize; this.reserve=Math.max(this.reserve,this.weapon.maxReserve); }
     this.isReloading=false; this.ads=false; this.camera.fov=this.baseFov;
     document.getElementById('sbScope')?.classList.remove('on'); this.vm.root.setEnabled(true);
@@ -3787,10 +3922,17 @@ function sbClearMap(){
   });
 }
 
-function sbMapSpawns(map){
-  if(map==='mirage') return [[-20, -20, 0.5],[20, -18, -0.5],[0, -24, 0]];
-  if(map==='inferno') return [[-18, -22, 0.3],[18, -20, -0.4],[0, -26, 0]];
-  return [[-16, -24, 0.4],[16, -22, -0.3],[0, -26, 0]]; // dust
+function sbMapSpawns(map, team){
+  team = team || sbTeam || 'T';
+  // default sides: T near negative Z, CT near positive Z
+  if(map==='mirage'){
+    return team==='CT' ? [[-18,18,3.14],[18,16,3.14],[0,20,3.14]] : [[-20,-20,0.5],[20,-18,-0.5],[0,-24,0]];
+  }
+  if(map==='inferno'){
+    return team==='CT' ? [[-16,18,3.14],[16,16,3.14],[0,20,3.14]] : [[-18,-22,0.3],[18,-20,-0.4],[0,-26,0]];
+  }
+  // dust
+  return team==='CT' ? [[-14,18,3.14],[14,16,3.14],[0,22,3.14]] : [[-16,-24,0.4],[16,-22,-0.3],[0,-26,0]];
 }
 
 function sbCreateMap(scene, mapId){
@@ -3856,11 +3998,12 @@ function sbCreateMap(scene, mapId){
 
 function sbSpawnBots(n){
   sbBots.forEach(b=>b.dispose()); sbBots=[];
-  const spots=[[14,22],[-16,24],[20,14],[-20,10],[10,28],[-12,16],[18,20],[-22,18]];
+  const enemyTeam = (sbTeam==='CT') ? 'T' : 'CT';
+  const spots = sbMapSpawns(sbCurrentMap, enemyTeam);
   n=Math.max(1,Math.min(8,n|0));
   for(let i=0;i<n;i++){
-    const [x,z]=spots[i%spots.length];
-    sbBots.push(new SBBot(sbScene, x+(Math.random()-0.5)*2, z+(Math.random()-0.5)*2, 'T'));
+    const s = spots[i % spots.length];
+    sbBots.push(new SBBot(sbScene, s[0]+(Math.random()-0.5)*2, s[1]+(Math.random()-0.5)*2, enemyTeam));
   }
 }
 
@@ -3896,6 +4039,13 @@ function sbToggleBuy(){
   else { menu?.classList.remove('open'); if(sbRound.phase!=='buy') sbCanvas?.requestPointerLock(); }
 }
 
+function sbSetTeam(t){
+  sbTeam = (t==='CT') ? 'CT' : 'T';
+  document.getElementById('sbTeamT')?.classList.toggle('active', sbTeam==='T');
+  document.getElementById('sbTeamCT')?.classList.toggle('active', sbTeam==='CT');
+  document.getElementById('sbTeamT2')?.classList.toggle('active', sbTeam==='T');
+  document.getElementById('sbTeamCT2')?.classList.toggle('active', sbTeam==='CT');
+}
 function sbSetMode(mode){
   sbMode=mode;
   document.getElementById('sbModeBots')?.classList.toggle('active', mode==='bots');
@@ -3961,6 +4111,7 @@ function sbEnsureEngine(){
 function sbStartBotsGame(){
   sbEnsureEngine();
   sbMode='bots';
+  if(sbPlayer) sbPlayer.team = sbTeam;
   sbBotCount=parseInt(document.getElementById('sbBotCount')?.value||'3',10)||3;
   sbCurrentMap=document.getElementById('sbMapSelect')?.value||'dust';
   sbLoadCustomMaps().then(()=>{ sbCreateMap(sbScene,sbCurrentMap); sbApplyCustomBoxes(sbScene,sbCurrentMap); });
@@ -4294,8 +4445,41 @@ async function sbLoadCustomMaps(){
   try{
     const { data, error } = await sb.from('blockstrike_maps').select('map_key, data');
     if(error){ console.warn('blockstrike_maps', error.message); return; }
-    (data||[]).forEach(row=>{ sbMapCustomCache[row.map_key] = sbNormalizeMapData(row.data); });
+    (data||[]).forEach(row=>{
+      const d = sbNormalizeMapData(row.data);
+      sbMapCustomCache[row.map_key] = d;
+      if(d.name) sbMapNames[row.map_key] = d.name;
+    });
+    sbRefreshMapSelects();
   }catch(e){ console.warn(e); }
+}
+function sbRefreshMapSelects(){
+  ['sbMapSelect','sbOnlineMapSelect','sbEditMapKey'].forEach(id=>{
+    const sel=document.getElementById(id); if(!sel) return;
+    const cur=sel.value;
+    // keep existing options keys, update labels
+    Array.from(sel.options).forEach(opt=>{
+      if(sbMapNames[opt.value]) opt.textContent = sbMapNames[opt.value];
+    });
+    if(cur) sel.value=cur;
+  });
+  const nameInp=document.getElementById('sbEditMapName');
+  if(nameInp){
+    const key=document.getElementById('sbEditMapKey')?.value||'dust';
+    nameInp.value = sbMapNames[key] || key;
+  }
+}
+function sbEditorRenameMap(){
+  if(!sbIsAdmin()) return;
+  const key=document.getElementById('sbEditMapKey')?.value||sbCurrentMap;
+  const name=(document.getElementById('sbEditMapName')?.value||'').trim();
+  if(!name){ alert('Введи название'); return; }
+  sbMapNames[key]=name;
+  const pack=sbNormalizeMapData(sbMapCustomCache[key]);
+  pack.name=name;
+  sbMapCustomCache[key]=pack;
+  sbRefreshMapSelects();
+  alert('Название «'+name+'» будет сохранено вместе с картой (кнопка Сохранить всем).');
 }
 
 function sbShapeMesh(scene, b){
@@ -4658,6 +4842,8 @@ async function sbEditorSave(){
   const key = document.getElementById('sbEditMapKey')?.value || sbCurrentMap;
   const data = sbNormalizeMapData(sbMapCustomCache[key]);
   data.fullMap = true;
+  data.name = sbMapNames[key] || (document.getElementById('sbEditMapName')?.value) || key;
+  sbMapNames[key]=data.name;
   // refresh boxes from live scene meshes
   data.boxes = [];
   sbScene.meshes.forEach(m=>{
@@ -4698,10 +4884,16 @@ function sbEditorExit(){
 }
 
 document.addEventListener('change', e=>{
-  if(e.target && e.target.id==='sbEditMapKey' && sbEditorMode){
-    sbCurrentMap = e.target.value;
-    sbCreateMap(sbScene, sbCurrentMap);
-    sbApplyCustomBoxes(sbScene, sbCurrentMap);
+  if(e.target && e.target.id==='sbEditMapKey'){
+    const key = e.target.value;
+    const nameInp=document.getElementById('sbEditMapName');
+    if(nameInp) nameInp.value = sbMapNames[key] || key;
+    if(sbEditorMode){
+      sbCurrentMap = key;
+      sbCreateMap(sbScene, sbCurrentMap);
+      sbApplyCustomBoxes(sbScene, sbCurrentMap);
+      if(typeof sbEditorHarvestBaseMeshes==='function') sbEditorHarvestBaseMeshes();
+    }
   }
 });
 
@@ -4723,15 +4915,19 @@ sbApplyWeaponModel = function(vm, weaponId){
 
 // Use map spawns if defined
 const _sbMapSpawns = sbMapSpawns;
-sbMapSpawns = function(map){
+sbMapSpawns = function(map, team){
+  team = team || sbTeam || 'T';
   const data = sbNormalizeMapData(sbMapCustomCache[map]);
-  if(data.spawnsCT && data.spawnsCT.length){
-    return data.spawnsCT.map(s=>[s.x, s.z, 0]);
+  if(team==='CT' && data.spawnsCT && data.spawnsCT.length){
+    return data.spawnsCT.map(s=>[s.x, s.z, Math.PI]);
   }
-  if(data.spawnsT && data.spawnsT.length){
+  if(team==='T' && data.spawnsT && data.spawnsT.length){
     return data.spawnsT.map(s=>[s.x, s.z, 0]);
   }
-  return _sbMapSpawns(map);
+  // fallback: if only one side defined, use it
+  if(data.spawnsCT && data.spawnsCT.length && team==='CT') return data.spawnsCT.map(s=>[s.x,s.z,Math.PI]);
+  if(data.spawnsT && data.spawnsT.length && team==='T') return data.spawnsT.map(s=>[s.x,s.z,0]);
+  return _sbMapSpawns(map, team);
 };
 
 function initSandboxGame(){
