@@ -435,7 +435,9 @@
   .sb-lobby-list div{padding:6px 0; border-bottom:1px solid #333;}
   .sb-editor-bar{position:absolute; left:10px; top:10px; z-index:25; display:none; flex-direction:column; gap:6px; pointer-events:auto;}
   .sb-editor-bar.show{display:flex;}
-  .sb-editor-bar button,.sb-editor-bar select{padding:8px 10px; border-radius:8px; border:1px solid #444; background:rgba(20,22,30,.92); color:#fff; font-size:12px; cursor:pointer; font-family:inherit;}
+  .sb-editor-bar button,.sb-editor-bar select,.sb-editor-bar input[type=range]{padding:8px 10px; border-radius:8px; border:1px solid #444; background:rgba(20,22,30,.92); color:#fff; font-size:12px; cursor:pointer; font-family:inherit; width:100%; box-sizing:border-box;}
+  .sb-editor-bar label{display:block;margin-top:2px;}
+  .sb-editor-bar{max-height:90vh; overflow-y:auto; width:180px;}
   .sb-editor-bar button.primary{background:var(--amber,#E8A33D); color:#1B1F3B; border:none; font-weight:700;}
   .sb-skin-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;}
   .sb-skin-btn{padding:8px; border-radius:8px; border:2px solid #333; background:#12141c; color:#fff; cursor:pointer; font-size:12px; text-align:left;}
@@ -787,8 +789,30 @@
                 <button type="button" class="sb-menu-btn ghost" id="sbEditMapsBtn" style="display:none;" onclick="sbEnterEditor()">🛠 Редактор карт (админ)</button>
               </div>
               <div id="sbSkinsPanel" style="display:none; margin-top:12px;">
-                <label>Скин для текущего оружия в игре</label>
+                <label>Оружие для превью</label>
+                <select id="sbSkinWeapon" onchange="sbSkinPreviewWeapon()">
+                  <option value="ak47">AK-47</option>
+                  <option value="m4a1">M4A1</option>
+                  <option value="awp">AWP</option>
+                  <option value="deagle">Deagle</option>
+                  <option value="glock">Glock</option>
+                  <option value="usp">USP-S</option>
+                </select>
+                <div style="width:100%;height:160px;margin:10px 0;border-radius:10px;overflow:hidden;background:#0d0f16;border:1px solid #333;">
+                  <canvas id="sbSkinPreviewCanvas" style="width:100%;height:100%;display:block;"></canvas>
+                </div>
+                <label>Готовые скины (деньги сайта — horse balance)</label>
                 <div class="sb-skin-grid" id="sbSkinGrid"></div>
+                <button type="button" class="sb-menu-btn" onclick="sbOpenPaint()">🎨 Свой скин — $2000 (1-й раз бесплатно)</button>
+                <div id="sbPaintPanel" style="display:none;margin-top:10px;">
+                  <canvas id="sbPaintCanvas" width="256" height="128" style="width:100%;height:128px;background:#222;border-radius:8px;cursor:crosshair;touch-action:none;"></canvas>
+                  <div class="sb-menu-row" style="margin-top:6px;">
+                    <input type="color" id="sbPaintColor" value="#4ade80" style="width:48px;height:36px;border:none;background:none;">
+                    <input type="range" id="sbPaintSize" min="2" max="24" value="8" style="flex:1;">
+                    <button type="button" class="sb-menu-btn" style="width:auto;margin:0;padding:8px 12px;" onclick="sbPaintClear()">Очистить</button>
+                  </div>
+                  <button type="button" class="sb-menu-btn" onclick="sbSavePaintSkin()">Сохранить скин</button>
+                </div>
                 <button type="button" class="sb-menu-btn ghost" onclick="sbCloseSkins()">Назад</button>
               </div>
               <div id="sbOnlineOptions" style="display:none;">
@@ -887,12 +911,27 @@
               <option value="mirage">Mirage</option>
               <option value="inferno">Inferno</option>
             </select>
-            <button type="button" onclick="sbEditorAddBox()">+ Блок</button>
+            <label style="font-size:11px;color:#aaa;">Фигура</label>
+            <select id="sbEditShape">
+              <option value="box">Куб</option>
+              <option value="cyl">Цилиндр</option>
+              <option value="sphere">Сфера</option>
+              <option value="ramp">Пандус</option>
+            </select>
+            <label style="font-size:11px;color:#aaa;">Ширина <span id="sbSzW">3</span></label>
+            <input type="range" id="sbEditW" min="1" max="20" step="0.5" value="3" oninput="document.getElementById('sbSzW').textContent=this.value">
+            <label style="font-size:11px;color:#aaa;">Высота <span id="sbSzH">2</span></label>
+            <input type="range" id="sbEditH" min="0.5" max="12" step="0.5" value="2" oninput="document.getElementById('sbSzH').textContent=this.value">
+            <label style="font-size:11px;color:#aaa;">Глубина <span id="sbSzD">3</span></label>
+            <input type="range" id="sbEditD" min="1" max="20" step="0.5" value="3" oninput="document.getElementById('sbSzD').textContent=this.value">
+            <button type="button" onclick="sbEditorSetTool('place')">🧱 Ставить</button>
+            <button type="button" onclick="sbEditorSetTool('spawn_t')">🟠 Спавн T</button>
+            <button type="button" onclick="sbEditorSetTool('spawn_ct')">🔵 Спавн CT</button>
             <button type="button" onclick="sbEditorUndo()">↩ Отмена</button>
             <button type="button" onclick="sbEditorClear()">Очистить кастом</button>
             <button type="button" class="primary" onclick="sbEditorSave()">💾 Сохранить всем</button>
-            <button type="button" onclick="sbEditorExit()">Выйти из редактора</button>
-            <div style="font-size:11px;color:#aaa;max-width:160px;">Клик по земле = блок. Клик по блоку = удалить. Только Abdrakhman.</div>
+            <button type="button" onclick="sbEditorExit()">Выйти</button>
+            <div style="font-size:11px;color:#aaa;max-width:170px;">Вид сверху. Клик — поставить / удалить. Спавны — маркеры.</div>
           </div>
         </div>
       </div>
@@ -4019,78 +4058,264 @@ function sbStartOnlineGame(){
 
 /* ---- Admin map editor + custom maps (Supabase) ---- */
 let sbEditorMode = false;
-let sbCustomBoxes = []; // {x,y,z,w,h,d,col}
-let sbMapCustomCache = {}; // mapKey -> boxes
+let sbEditorTool = 'place'; // place | spawn_t | spawn_ct
+let sbMapCustomCache = {}; // mapKey -> { boxes:[], spawnsT:[], spawnsCT:[] }
+let sbEditorCam = null;
+let sbSkinPreview = { engine:null, scene:null, gun:null, mat:null };
+let sbPaintDrawing = false;
 
 function sbIsAdmin(){
   const u = (currentUser && currentUser.username) ? currentUser.username : '';
   return u.toLowerCase() === 'abdrakhman';
 }
 
+function sbNormalizeMapData(data){
+  if(Array.isArray(data)) return { boxes:data, spawnsT:[], spawnsCT:[] };
+  if(data && typeof data==='object') return { boxes:data.boxes||[], spawnsT:data.spawnsT||[], spawnsCT:data.spawnsCT||[] };
+  return { boxes:[], spawnsT:[], spawnsCT:[] };
+}
+
 function sbOpenSkins(){
   document.getElementById('sbBotsOptions').style.display='none';
   document.getElementById('sbOnlineOptions').style.display='none';
   document.getElementById('sbSkinsPanel').style.display='block';
+  document.getElementById('sbPaintPanel').style.display='none';
   sbRenderSkinGrid();
+  setTimeout(sbInitSkinPreview, 50);
 }
 function sbCloseSkins(){
   document.getElementById('sbSkinsPanel').style.display='none';
+  sbDisposeSkinPreview();
   sbSetMode(sbMode);
 }
+
+function sbInitSkinPreview(){
+  const canvas = document.getElementById('sbSkinPreviewCanvas');
+  if(!canvas || sbSkinPreview.engine) { sbSkinPreviewWeapon(); return; }
+  const engine = new BABYLON.Engine(canvas, true, { alpha:true });
+  const scene = new BABYLON.Scene(engine);
+  scene.clearColor = new BABYLON.Color4(0.05,0.06,0.1,1);
+  const cam = new BABYLON.ArcRotateCamera('sc', -0.9, 1.1, 2.2, new BABYLON.Vector3(0,0,0), scene);
+  cam.attachControl(canvas, true);
+  cam.lowerRadiusLimit=1.2; cam.upperRadiusLimit=4;
+  new BABYLON.HemisphericLight('l', new BABYLON.Vector3(0.4,1,0.3), scene).intensity=1.1;
+  sbSkinPreview = { engine, scene, gun:null, mat:null, cam };
+  engine.runRenderLoop(()=>{ if(sbSkinPreview.gun) sbSkinPreview.gun.rotation.y += 0.012; scene.render(); });
+  sbSkinPreviewWeapon();
+}
+function sbDisposeSkinPreview(){
+  if(sbSkinPreview.engine){ sbSkinPreview.engine.dispose(); }
+  sbSkinPreview = { engine:null, scene:null, gun:null, mat:null };
+}
+function sbSkinPreviewWeapon(){
+  if(!sbSkinPreview.scene) return;
+  const scene = sbSkinPreview.scene;
+  if(sbSkinPreview.gun){ sbSkinPreview.gun.dispose(); sbSkinPreview.gun=null; }
+  const id = document.getElementById('sbSkinWeapon')?.value || 'ak47';
+  const root = new BABYLON.TransformNode('pg', scene);
+  const mat = new BABYLON.StandardMaterial('pm', scene);
+  const skinId = sbGetEquippedSkin(id);
+  const skin = SB_SKINS[skinId] || SB_SKINS.default;
+  mat.diffuseColor = new BABYLON.Color3(...skin.body);
+  // simple weapon mesh by type
+  const body = BABYLON.MeshBuilder.CreateBox('pb', {width:0.15, height:0.18, depth:0.9}, scene);
+  body.parent = root; body.material = mat;
+  const barrel = BABYLON.MeshBuilder.CreateBox('pbr', {width:0.06, height:0.06, depth:0.55}, scene);
+  barrel.parent = root; barrel.position.z = 0.55; barrel.material = mat;
+  if(id==='awp'){ body.scaling.set(1.2,1.1,1.3); barrel.scaling.set(1.2,1.2,1.5); }
+  if(id==='glock'||id==='usp'){ body.scaling.set(0.8,0.7,0.5); barrel.scaling.set(0.8,0.8,0.45); }
+  if(id==='deagle'){ body.scaling.set(1,0.85,0.55); }
+  // custom texture?
+  const st = sbLoadSkinState();
+  if(st.customTex){
+    try{
+      const tex = new BABYLON.Texture(st.customTex, scene);
+      mat.diffuseTexture = tex;
+    }catch(e){}
+  }
+  sbSkinPreview.gun = root;
+  sbSkinPreview.mat = mat;
+}
+
 function sbRenderSkinGrid(){
   const grid=document.getElementById('sbSkinGrid'); if(!grid) return;
-  const st=sbLoadSkinState();
-  const weaponId = (sbPlayer && sbPlayer.currentWeaponId) || 'ak47';
+  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
   const eq = sbGetEquippedSkin(weaponId);
   grid.innerHTML = Object.values(SB_SKINS).map(sk=>{
     const owned = sbOwnSkin(sk.id);
     const active = eq===sk.id ? 'active' : '';
-    const price = sk.price>0 ? `<span class="price">${owned?'✓':('$' + sk.price)}</span>` : '';
+    const price = sk.price>0 ? `<span class="price">${owned?'✓':('$' + sk.price)}</span>` : '<span class="price">✓</span>';
     return `<button type="button" class="sb-skin-btn ${active}" onclick="sbSelectSkin('${sk.id}')">
       <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgb(${sk.body.map(x=>Math.round(x*255)).join(',')});margin-right:6px;"></span>
       ${sk.name} ${price}
     </button>`;
   }).join('');
+  // also show custom if exists
+  const st=sbLoadSkinState();
+  if(st.customTex){
+    grid.innerHTML += `<button type="button" class="sb-skin-btn ${eq==='custom'?'active':''}" onclick="sbSelectSkin('custom')">🎨 Свой скин <span class="price">✓</span></button>`;
+  }
 }
-function sbSelectSkin(skinId){
-  const sk = SB_SKINS[skinId]; if(!sk) return;
+
+async function sbSiteSpend(amount){
+  // use shared horse_balances
+  if(typeof horseBalance === 'undefined'){
+    try{
+      const {data} = await sb.from('horse_balances').select('balance').eq('user_id', currentUser.id).maybeSingle();
+      window.horseBalance = data ? Number(data.balance) : 0;
+    }catch(e){ window.horseBalance = 0; }
+  }
+  if(horseBalance < amount) return false;
+  const newBal = horseBalance - amount;
+  const {error} = await sb.from('horse_balances').update({balance:newBal}).eq('user_id', currentUser.id);
+  if(error) throw error;
+  horseBalance = newBal;
+  const el = document.getElementById('horseBalanceLabel');
+  if(el) el.textContent = (typeof fmtMoney==='function'?fmtMoney(horseBalance):('$'+horseBalance));
+  return true;
+}
+
+async function sbSelectSkin(skinId){
   const st = sbLoadSkinState();
   st.owned = st.owned || [];
   st.eq = st.eq || {};
-  if(!sbOwnSkin(skinId)){
-    // buy with player money if in game, else need money from last session
-    const money = sbPlayer ? sbPlayer.money : 0;
-    if(money < sk.price){ alert('Недостаточно денег в текущем матче (нужно $'+sk.price+')'); return; }
-    if(sbPlayer) sbPlayer.money -= sk.price;
-    st.owned.push(skinId);
+  const weaponId = document.getElementById('sbSkinWeapon')?.value || (sbPlayer && sbPlayer.currentWeaponId) || 'ak47';
+
+  if(skinId==='custom'){
+    if(!st.customTex){ alert('Сначала нарисуй скин'); return; }
+    st.eq[weaponId] = 'custom';
+    sbSaveSkinState(st);
+    if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
+    sbSkinPreviewWeapon();
+    sbRenderSkinGrid();
+    return;
   }
-  const weaponId = (sbPlayer && sbPlayer.currentWeaponId) || 'ak47';
-  // equip for all weapons for simplicity, or per weapon:
+
+  const sk = SB_SKINS[skinId]; if(!sk) return;
+  if(!sbOwnSkin(skinId) && sk.price>0){
+    try{
+      const ok = await sbSiteSpend(sk.price);
+      if(!ok){ alert('Недостаточно денег сайта (нужно $'+sk.price+'). Баланс из скачек/блэкджека.'); return; }
+      st.owned.push(skinId);
+    }catch(e){ alert('Ошибка оплаты: '+e.message); return; }
+  }
   st.eq[weaponId] = skinId;
-  // also set as default for rifles if buying gold etc
   sbSaveSkinState(st);
   if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
+  sbSkinPreviewWeapon();
   sbRenderSkinGrid();
+}
+
+function sbOpenPaint(){
+  const panel = document.getElementById('sbPaintPanel');
+  panel.style.display = panel.style.display==='none'?'block':'none';
+  if(panel.style.display==='block') sbInitPaint();
+}
+function sbInitPaint(){
+  const canvas = document.getElementById('sbPaintCanvas');
+  if(!canvas || canvas._inited) return;
+  canvas._inited = true;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a2a32';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  let drawing=false;
+  const pos = e=>{
+    const r=canvas.getBoundingClientRect();
+    const x=(e.clientX||e.touches?.[0]?.clientX)-r.left;
+    const y=(e.clientY||e.touches?.[0]?.clientY)-r.top;
+    return {x:x*(canvas.width/r.width), y:y*(canvas.height/r.height)};
+  };
+  const draw = e=>{
+    if(!drawing) return; e.preventDefault();
+    const p=pos(e); const size=parseInt(document.getElementById('sbPaintSize').value,10)||8;
+    ctx.fillStyle=document.getElementById('sbPaintColor').value;
+    ctx.beginPath(); ctx.arc(p.x,p.y,size/2,0,Math.PI*2); ctx.fill();
+  };
+  canvas.addEventListener('mousedown', e=>{ drawing=true; draw(e); });
+  canvas.addEventListener('mousemove', draw);
+  window.addEventListener('mouseup', ()=> drawing=false);
+  canvas.addEventListener('touchstart', e=>{ drawing=true; draw(e); }, {passive:false});
+  canvas.addEventListener('touchmove', draw, {passive:false});
+  canvas.addEventListener('touchend', ()=> drawing=false);
+}
+function sbPaintClear(){
+  const canvas=document.getElementById('sbPaintCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#2a2a32'; ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+async function sbSavePaintSkin(){
+  const st = sbLoadSkinState();
+  const freeUsed = !!st.paintUsedFree;
+  const cost = freeUsed ? 2000 : 0;
+  if(cost>0){
+    try{
+      const ok = await sbSiteSpend(cost);
+      if(!ok){ alert('Нужно $2000 на балансе сайта'); return; }
+    }catch(e){ alert(e.message); return; }
+  } else {
+    st.paintUsedFree = true;
+  }
+  const canvas=document.getElementById('sbPaintCanvas');
+  st.customTex = canvas.toDataURL('image/png');
+  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
+  st.eq = st.eq || {};
+  st.eq[weaponId] = 'custom';
+  sbSaveSkinState(st);
+  if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
+  sbSkinPreviewWeapon();
+  sbRenderSkinGrid();
+  alert(cost===0 ? 'Свой скин сохранён (бесплатно первый раз)!' : 'Свой скин куплен за $2000');
 }
 
 async function sbLoadCustomMaps(){
   try{
     const { data, error } = await sb.from('blockstrike_maps').select('map_key, data');
     if(error){ console.warn('blockstrike_maps', error.message); return; }
-    (data||[]).forEach(row=>{ sbMapCustomCache[row.map_key] = row.data || []; });
+    (data||[]).forEach(row=>{ sbMapCustomCache[row.map_key] = sbNormalizeMapData(row.data); });
   }catch(e){ console.warn(e); }
 }
 
-function sbApplyCustomBoxes(scene, mapKey){
-  const boxes = sbMapCustomCache[mapKey] || [];
-  boxes.forEach(b=>{
-    const m = sbBox(scene, b.x,b.y,b.z,b.w,b.h,b.d, b.col||[0.5,0.5,0.5]);
-    m.metadata = { custom:true, data:b };
-  });
+function sbShapeMesh(scene, b){
+  const col = b.col || [0.5,0.5,0.5];
+  const mat = new BABYLON.StandardMaterial('cm'+Math.random(), scene);
+  mat.diffuseColor = new BABYLON.Color3(col[0],col[1],col[2]);
+  let m;
+  const shape = b.shape || 'box';
+  if(shape==='cyl'){
+    m = BABYLON.MeshBuilder.CreateCylinder('c', { height:b.h, diameter:Math.max(b.w,b.d) }, scene);
+  } else if(shape==='sphere'){
+    m = BABYLON.MeshBuilder.CreateSphere('c', { diameter:Math.max(b.w,b.h,b.d) }, scene);
+  } else if(shape==='ramp'){
+    m = BABYLON.MeshBuilder.CreateBox('c', { width:b.w, height:b.h, depth:b.d }, scene);
+    m.rotation.x = -0.4;
+  } else {
+    m = BABYLON.MeshBuilder.CreateBox('c', { width:b.w, height:b.h, depth:b.d }, scene);
+  }
+  m.position.set(b.x, b.y, b.z);
+  m.material = mat;
+  m.metadata = { custom:true, data:b };
+  return m;
 }
 
-// patch create map to apply customs - wrap
-const _sbCreateMapOrig = typeof sbCreateMap === 'function' ? sbCreateMap : null;
+function sbSpawnMarker(scene, x, z, team){
+  const m = BABYLON.MeshBuilder.CreateCylinder('spawn', { height:0.3, diameter:1.6 }, scene);
+  m.position.set(x, 0.2, z);
+  const mat = new BABYLON.StandardMaterial('sm', scene);
+  mat.diffuseColor = team==='CT' ? new BABYLON.Color3(0.25,0.45,0.9) : new BABYLON.Color3(0.95,0.55,0.15);
+  mat.emissiveColor = mat.diffuseColor.scale(0.3);
+  m.material = mat;
+  m.metadata = { spawn:true, team, x, z };
+  return m;
+}
+
+function sbApplyCustomBoxes(scene, mapKey){
+  const data = sbNormalizeMapData(sbMapCustomCache[mapKey]);
+  (data.boxes||[]).forEach(b=> sbShapeMesh(scene, b));
+  (data.spawnsT||[]).forEach(s=> sbSpawnMarker(scene, s.x, s.z, 'T'));
+  (data.spawnsCT||[]).forEach(s=> sbSpawnMarker(scene, s.x, s.z, 'CT'));
+}
+
+function sbEditorSetTool(t){ sbEditorTool = t; }
 
 function sbEnterEditor(){
   if(!sbIsAdmin()){ alert('Редактор только для Abdrakhman'); return; }
@@ -4105,77 +4330,109 @@ function sbEnterEditor(){
   sbCurrentMap = key;
   sbCreateMap(sbScene, key);
   sbApplyCustomBoxes(sbScene, key);
-  // click handler
+
+  // Top-down orthographic camera
+  if(sbEditorCam) sbEditorCam.dispose();
+  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.05, 70, new BABYLON.Vector3(0,0,0), sbScene);
+  sbEditorCam.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
+  const aspect = sbCanvas.width / Math.max(1,sbCanvas.height);
+  const ortho = 45;
+  sbEditorCam.orthoLeft=-ortho*aspect; sbEditorCam.orthoRight=ortho*aspect;
+  sbEditorCam.orthoTop=ortho; sbEditorCam.orthoBottom=-ortho;
+  sbEditorCam.lowerRadiusLimit=40; sbEditorCam.upperRadiusLimit=120;
+  sbEditorCam.attachControl(sbCanvas, true);
+  sbScene.activeCamera = sbEditorCam;
+
   if(!sbScene._editorPick){
     sbScene._editorPick = true;
     sbScene.onPointerObservable.add((pi)=>{
       if(!sbEditorMode) return;
       if(pi.type !== BABYLON.PointerEventTypes.POINTERPICK) return;
       const pick = pi.pickInfo; if(!pick||!pick.hit) return;
+      // delete custom
       if(pick.pickedMesh && pick.pickedMesh.metadata && pick.pickedMesh.metadata.custom){
-        // delete
         const data = pick.pickedMesh.metadata.data;
-        sbMapCustomCache[sbCurrentMap] = (sbMapCustomCache[sbCurrentMap]||[]).filter(b=> b!==data && !(b.x===data.x&&b.y===data.y&&b.z===data.z));
+        const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+        pack.boxes = pack.boxes.filter(b=> !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
+        sbMapCustomCache[sbCurrentMap]=pack;
+        pick.pickedMesh.dispose();
+        return;
+      }
+      if(pick.pickedMesh && pick.pickedMesh.metadata && pick.pickedMesh.metadata.spawn){
+        const meta = pick.pickedMesh.metadata;
+        const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+        const key = meta.team==='CT'?'spawnsCT':'spawnsT';
+        pack[key] = pack[key].filter(s=> !(s.x===meta.x && s.z===meta.z));
+        sbMapCustomCache[sbCurrentMap]=pack;
         pick.pickedMesh.dispose();
         return;
       }
       if(pick.pickedMesh && pick.pickedMesh.name==='ground'){
         const p = pick.pickedPoint;
-        sbEditorAddBoxAt(p.x, p.z);
+        const x=Math.round(p.x*2)/2, z=Math.round(p.z*2)/2;
+        if(sbEditorTool==='spawn_t' || sbEditorTool==='spawn_ct'){
+          const team = sbEditorTool==='spawn_ct'?'CT':'T';
+          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+          const key = team==='CT'?'spawnsCT':'spawnsT';
+          pack[key].push({x,z});
+          sbMapCustomCache[sbCurrentMap]=pack;
+          sbSpawnMarker(sbScene, x, z, team);
+        } else {
+          sbEditorAddBoxAt(x, z);
+        }
       }
     });
   }
 }
 
-function sbEditorAddBox(){
-  if(!sbPlayer) return;
-  const p = sbScene.activeCamera.position;
-  const dir = sbScene.activeCamera.getDirection(BABYLON.Vector3.Forward());
-  sbEditorAddBoxAt(p.x+dir.x*6, p.z+dir.z*6);
-}
 function sbEditorAddBoxAt(x,z){
-  const col = [0.4+Math.random()*0.4, 0.4+Math.random()*0.4, 0.4+Math.random()*0.4];
-  const b = { x:Math.round(x*2)/2, y:1, z:Math.round(z*2)/2, w:3, h:2, d:3, col };
-  if(!sbMapCustomCache[sbCurrentMap]) sbMapCustomCache[sbCurrentMap]=[];
-  sbMapCustomCache[sbCurrentMap].push(b);
-  const m = sbBox(sbScene, b.x,b.y,b.z,b.w,b.h,b.d,b.col);
-  m.metadata = { custom:true, data:b };
+  const w=parseFloat(document.getElementById('sbEditW')?.value||3);
+  const h=parseFloat(document.getElementById('sbEditH')?.value||2);
+  const d=parseFloat(document.getElementById('sbEditD')?.value||3);
+  const shape=document.getElementById('sbEditShape')?.value||'box';
+  const col=[0.4+Math.random()*0.4,0.4+Math.random()*0.4,0.4+Math.random()*0.4];
+  const b={ shape, x, y:h/2, z, w, h, d, col };
+  const pack=sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+  pack.boxes.push(b);
+  sbMapCustomCache[sbCurrentMap]=pack;
+  sbShapeMesh(sbScene, b);
+}
+function sbEditorAddBox(){ // place in front of camera center
+  sbEditorAddBoxAt(0,0);
 }
 function sbEditorUndo(){
-  const arr = sbMapCustomCache[sbCurrentMap]||[];
-  if(!arr.length) return;
-  arr.pop();
+  const pack=sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+  pack.boxes.pop();
+  sbMapCustomCache[sbCurrentMap]=pack;
   sbCreateMap(sbScene, sbCurrentMap);
   sbApplyCustomBoxes(sbScene, sbCurrentMap);
 }
 function sbEditorClear(){
-  sbMapCustomCache[sbCurrentMap]=[];
+  sbMapCustomCache[sbCurrentMap]={ boxes:[], spawnsT:[], spawnsCT:[] };
   sbCreateMap(sbScene, sbCurrentMap);
 }
 async function sbEditorSave(){
   if(!sbIsAdmin()) return;
   const key = document.getElementById('sbEditMapKey')?.value || sbCurrentMap;
-  const data = sbMapCustomCache[key] || [];
+  const data = sbNormalizeMapData(sbMapCustomCache[key]);
   try{
     const { error } = await sb.from('blockstrike_maps').upsert({
-      map_key: key,
-      data: data,
-      updated_by: currentUser.id,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'map_key' });
+      map_key: key, data, updated_by: currentUser.id, updated_at: new Date().toISOString()
+    }, { onConflict:'map_key' });
     if(error) throw error;
-    alert('Карта «'+key+'» сохранена. У всех подтянется при входе в игру.');
+    alert('Карта «'+key+'» сохранена для всех.');
   }catch(e){
-    alert('Не удалось сохранить. Нужна таблица blockstrike_maps в Supabase.\n\n'+e.message+'\n\nSQL:\ncreate table blockstrike_maps (\n  map_key text primary key,\n  data jsonb default \'[]\',\n  updated_by uuid,\n  updated_at timestamptz\n);\n\nЛокальный кэш всё равно обновлён.');
+    alert('Ошибка сохранения: '+e.message+'\n\nНужна таблица blockstrike_maps (см. инструкцию).');
   }
 }
 function sbEditorExit(){
   sbEditorMode=false;
   document.getElementById('sbEditorBar')?.classList.remove('show');
   document.getElementById('sbMainMenu')?.classList.remove('hidden');
+  if(sbEditorCam){ sbEditorCam.dispose(); sbEditorCam=null; }
+  if(sbPlayer && sbPlayer.camera) sbScene.activeCamera = sbPlayer.camera;
 }
 
-// When changing edit map dropdown
 document.addEventListener('change', e=>{
   if(e.target && e.target.id==='sbEditMapKey' && sbEditorMode){
     sbCurrentMap = e.target.value;
@@ -4183,6 +4440,35 @@ document.addEventListener('change', e=>{
     sbApplyCustomBoxes(sbScene, sbCurrentMap);
   }
 });
+
+// Apply custom texture in viewmodel
+const _sbApplyWeaponModel = sbApplyWeaponModel;
+sbApplyWeaponModel = function(vm, weaponId){
+  _sbApplyWeaponModel(vm, weaponId);
+  const st = sbLoadSkinState();
+  const eq = sbGetEquippedSkin(weaponId);
+  if(eq==='custom' && st.customTex && vm.gunMat){
+    try{
+      const tex = new BABYLON.Texture(st.customTex, vm.gunMat.getScene());
+      vm.gunMat.diffuseTexture = tex;
+    }catch(e){}
+  } else if(vm.gunMat){
+    vm.gunMat.diffuseTexture = null;
+  }
+};
+
+// Use map spawns if defined
+const _sbMapSpawns = sbMapSpawns;
+sbMapSpawns = function(map){
+  const data = sbNormalizeMapData(sbMapCustomCache[map]);
+  if(data.spawnsCT && data.spawnsCT.length){
+    return data.spawnsCT.map(s=>[s.x, s.z, 0]);
+  }
+  if(data.spawnsT && data.spawnsT.length){
+    return data.spawnsT.map(s=>[s.x, s.z, 0]);
+  }
+  return _sbMapSpawns(map);
+};
 
 function initSandboxGame(){
   sbEnsureEngine();
