@@ -433,6 +433,15 @@
   .sb-scope-cross::after{height:1px; width:120px; top:50%; left:-60px; transform:translateY(-50%);}
   .sb-lobby-list{margin-top:10px; font-size:13px; max-height:120px; overflow-y:auto;}
   .sb-lobby-list div{padding:6px 0; border-bottom:1px solid #333;}
+  .sb-editor-bar{position:absolute; left:10px; top:10px; z-index:25; display:none; flex-direction:column; gap:6px; pointer-events:auto;}
+  .sb-editor-bar.show{display:flex;}
+  .sb-editor-bar button,.sb-editor-bar select{padding:8px 10px; border-radius:8px; border:1px solid #444; background:rgba(20,22,30,.92); color:#fff; font-size:12px; cursor:pointer; font-family:inherit;}
+  .sb-editor-bar button.primary{background:var(--amber,#E8A33D); color:#1B1F3B; border:none; font-weight:700;}
+  .sb-skin-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;}
+  .sb-skin-btn{padding:8px; border-radius:8px; border:2px solid #333; background:#12141c; color:#fff; cursor:pointer; font-size:12px; text-align:left;}
+  .sb-skin-btn.active{border-color:var(--amber,#E8A33D);}
+  .sb-skin-btn .price{color:#4ade80; float:right;}
+
 
 
   .sb-buy-menu{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(12,12,18,.97); border:1px solid #333; padding:22px 26px; border-radius:12px; pointer-events:auto; min-width:320px; max-height:75%; overflow-y:auto; box-shadow:0 16px 40px rgba(0,0,0,.55); z-index:6; display:none;}
@@ -774,6 +783,13 @@
                 <label>Количество ботов (1–8)</label>
                 <input type="number" id="sbBotCount" min="1" max="8" value="3">
                 <button type="button" class="sb-menu-btn" onclick="sbStartBotsGame()">Играть</button>
+                <button type="button" class="sb-menu-btn ghost" onclick="sbOpenSkins()">Скины оружия</button>
+                <button type="button" class="sb-menu-btn ghost" id="sbEditMapsBtn" style="display:none;" onclick="sbEnterEditor()">🛠 Редактор карт (админ)</button>
+              </div>
+              <div id="sbSkinsPanel" style="display:none; margin-top:12px;">
+                <label>Скин для текущего оружия в игре</label>
+                <div class="sb-skin-grid" id="sbSkinGrid"></div>
+                <button type="button" class="sb-menu-btn ghost" onclick="sbCloseSkins()">Назад</button>
               </div>
               <div id="sbOnlineOptions" style="display:none;">
                 <label>Карта (при создании)</label>
@@ -863,6 +879,21 @@
           </div>
           <button type="button" class="sb-jump" id="sbJumpBtn">Прыжок</button>
           <button type="button" class="sb-fullscreen" id="sbFullscreenBtn">⛶</button>
+
+          <!-- Map editor (admin) -->
+          <div class="sb-editor-bar" id="sbEditorBar">
+            <select id="sbEditMapKey">
+              <option value="dust">Dust II</option>
+              <option value="mirage">Mirage</option>
+              <option value="inferno">Inferno</option>
+            </select>
+            <button type="button" onclick="sbEditorAddBox()">+ Блок</button>
+            <button type="button" onclick="sbEditorUndo()">↩ Отмена</button>
+            <button type="button" onclick="sbEditorClear()">Очистить кастом</button>
+            <button type="button" class="primary" onclick="sbEditorSave()">💾 Сохранить всем</button>
+            <button type="button" onclick="sbEditorExit()">Выйти из редактора</button>
+            <div style="font-size:11px;color:#aaa;max-width:160px;">Клик по земле = блок. Клик по блоку = удалить. Только Abdrakhman.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -3204,6 +3235,44 @@ const SBWeapons = {
   usp:   { id:'usp',   name:'USP-S', type:'pistol', damage:35, rpm:352, magSize:12, maxReserve:24, reloadTime:2.2, recoil:{x:0.25,y:1.0}, spread:0.012, price:200, movePenalty:0.03, range:60 }
 };
 
+/* ---- Skins (color presets per weapon) ---- */
+const SB_SKINS = {
+  default: { id:'default', name:'Стандарт', price:0, body:[0.18,0.18,0.20], accent:[0.3,0.32,0.28], wood:[0.45,0.28,0.12] },
+  blue:    { id:'blue', name:'Синий', price:500, body:[0.15,0.25,0.55], accent:[0.2,0.4,0.7], wood:[0.2,0.25,0.35] },
+  crimson: { id:'crimson', name:'Багряный', price:800, body:[0.45,0.08,0.1], accent:[0.7,0.15,0.15], wood:[0.35,0.15,0.1] },
+  gold:    { id:'gold', name:'Золото', price:2000, body:[0.72,0.55,0.15], accent:[0.9,0.75,0.25], wood:[0.55,0.4,0.15] },
+  mint:    { id:'mint', name:'Мята', price:700, body:[0.15,0.45,0.38], accent:[0.25,0.7,0.55], wood:[0.2,0.35,0.3] },
+  carbon:  { id:'carbon', name:'Карбон', price:1200, body:[0.08,0.08,0.1], accent:[0.25,0.25,0.28], wood:[0.12,0.12,0.14] }
+};
+// owned skins + equipped per weapon stored in localStorage
+function sbLoadSkinState(){
+  try{ return JSON.parse(localStorage.getItem('bs_skins')||'{}'); }catch(e){ return {}; }
+}
+function sbSaveSkinState(st){ localStorage.setItem('bs_skins', JSON.stringify(st)); }
+function sbGetEquippedSkin(weaponId){
+  const st=sbLoadSkinState();
+  return st.eq && st.eq[weaponId] ? st.eq[weaponId] : 'default';
+}
+function sbOwnSkin(skinId){
+  if(skinId==='default') return true;
+  const st=sbLoadSkinState();
+  return (st.owned||[]).includes(skinId);
+}
+
+/* ---- CS-like recoil patterns (vertical kick sequence + horizontal) ---- */
+const SB_RECOIL = {
+  // pattern: array of {up, right} per shot, then loops last values with noise
+  ak47:  { pattern:[[1.9,0.15],[1.7,0.25],[1.6,-0.2],[1.55,0.35],[1.5,-0.4],[1.45,0.3],[1.4,-0.25],[1.35,0.2],[1.3,-0.15],[1.25,0.1]], recover:0.82, adsScale:0.4 },
+  m4a1:  { pattern:[[1.4,0.1],[1.3,0.18],[1.25,-0.15],[1.2,0.22],[1.15,-0.2],[1.1,0.15],[1.05,-0.12],[1.0,0.1]], recover:0.86, adsScale:0.35 },
+  awp:   { pattern:[[4.2,0.05]], recover:0.7, adsScale:0.25 },
+  deagle:{ pattern:[[3.0,0.4],[2.6,-0.35],[2.4,0.3]], recover:0.78, adsScale:0.45 },
+  glock: { pattern:[[1.0,0.12],[0.9,-0.1],[0.85,0.15],[0.8,-0.12]], recover:0.88, adsScale:0.5 },
+  usp:   { pattern:[[0.95,0.1],[0.85,-0.08],[0.8,0.12]], recover:0.9, adsScale:0.5 },
+  knife: { pattern:[[0,0]], recover:1, adsScale:1 }
+};
+
+
+
 const SBInput = {
   keys:{}, mouse:{dx:0,dy:0,left:false,right:false}, pointerLocked:false, _inited:false,
   init(canvas){
@@ -3278,7 +3347,17 @@ function sbCreateViewmodel(scene, camera){
 }
 
 function sbApplyWeaponModel(vm, weaponId){
-  const hideAll=()=>{ ['body','barrel','stock','mag','scope','blade'].forEach(k=> vm[k].setEnabled(false)); };
+  const skinId = sbGetEquippedSkin(weaponId);
+  const skin = SB_SKINS[skinId] || SB_SKINS.default;
+  if(vm.gunMat) vm.gunMat.diffuseColor = new BABYLON.Color3(...skin.body);
+  if(vm.woodMat) vm.woodMat.diffuseColor = new BABYLON.Color3(...skin.wood);
+  // accent on mag if exists
+  if(vm.mag && vm.mag.material){
+    if(!vm.accentMat){ vm.accentMat = new BABYLON.StandardMaterial('accDyn', vm.mag.getScene()); }
+    vm.accentMat.diffuseColor = new BABYLON.Color3(...skin.accent);
+    vm.mag.material = vm.accentMat;
+  }
+  const hideAll=()=>{ ['body','barrel','stock','mag','scope','blade'].forEach(k=> vm[k] && vm[k].setEnabled(false)); };
   hideAll();
   vm.hand.position.set(0.08,-0.04,0.18);
   vm.arm.rotation.x=0.15;
@@ -3406,9 +3485,34 @@ class SBPlayer {
     const sens=this.ads?0.0009:0.00215;
     this.camera.rotation.y+=dx*sens; this.camera.rotation.x+=dy*sens;
     this.camera.rotation.x=BABYLON.Scalar.Clamp(this.camera.rotation.x,-1.45,1.45);
-    this.recoilPitch*=0.86; this.recoilYaw*=0.86;
     this.camera.rotation.x+=this.recoilPitch*dt*60; this.camera.rotation.y+=this.recoilYaw*dt*60;
-    this.vmKick*=0.85; this.vm.root.rotation.x=this.vmKick; this.vm.root.position.z=0.55-this.vmKick*0.15;
+    this.vmKick*=0.85;
+    // reload animation
+    let reloadOff=0, reloadRot=0, reloadX=0;
+    if(this.isReloading){
+      const total = (this.weapon.reloadTime||2)*1000;
+      const left = Math.max(0, this.reloadEnd - performance.now());
+      const t = 1 - left/total; // 0..1
+      // dip down, rotate, mag motion feel
+      if(t<0.35){ const u=t/0.35; reloadOff=-0.12*u; reloadRot=0.5*u; reloadX=0.05*u; }
+      else if(t<0.7){ const u=(t-0.35)/0.35; reloadOff=-0.12+0.04*u; reloadRot=0.5-0.2*u; reloadX=0.05; }
+      else { const u=(t-0.7)/0.3; reloadOff=-0.08*(1-u); reloadRot=0.3*(1-u); reloadX=0.05*(1-u); }
+      if(this.vm.mag) this.vm.mag.position.y = -0.1 - 0.15*Math.sin(Math.min(1,t*3.2)*Math.PI);
+    } else if(this.vm.mag && this.weapon.type!=='melee'){
+      // reset mag y roughly - will be fixed on switch
+    }
+    this.vm.root.rotation.x = this.vmKick + reloadRot;
+    this.vm.root.position.z = 0.55 - this.vmKick*0.15 + reloadOff;
+    this.vm.root.position.x = 0.28 + reloadX;
+    // pattern recover
+    if(this._recoilRecoverAt && performance.now() > this._recoilRecoverAt){
+      this._shotIndex = 0;
+      this._recoilRecoverAt = 0;
+    }
+    // smooth recover pitch toward 0 extra
+    const rec = (SB_RECOIL[this.weapon.id]||SB_RECOIL.glock).recover;
+    this.recoilPitch *= rec;
+    this.recoilYaw *= rec;
 
     // AWP ADS
     const wantAds = SBInput.mouse.right && this.weapon.id==='awp' && !this.isReloading;
@@ -3467,10 +3571,18 @@ class SBPlayer {
     if(this.weapon.type==='melee'){ this.lastShot=now; SBAudio.shoot('knife'); this.vmKick=0.25; this.doRaycast(this.weapon.damage,this.weapon.range); return; }
     if(this.ammo<=0){ if(this.reserve>0&&!this.isReloading) this.startReload(); return; }
     this.lastShot=now; this.ammo--;
-    const recoilMul=this.ads?0.35:1;
-    this.recoilPitch-=this.weapon.recoil.y*0.012*recoilMul;
-    this.recoilYaw+=(Math.random()-0.5)*this.weapon.recoil.x*0.025*recoilMul;
-    this.vmKick=0.12+this.weapon.recoil.y*0.02;
+    // CS-like pattern recoil
+    const rp = SB_RECOIL[this.weapon.id] || SB_RECOIL.glock;
+    if(this._shotIndex===undefined) this._shotIndex=0;
+    const step = rp.pattern[Math.min(this._shotIndex, rp.pattern.length-1)];
+    this._shotIndex++;
+    const adsMul = this.ads ? (rp.adsScale||0.4) : 1;
+    const noise = ()=> (Math.random()-0.5)*0.08;
+    this.recoilPitch -= (step[0]*0.012 + noise()) * adsMul;
+    this.recoilYaw   += (step[1]*0.02 + noise()) * adsMul;
+    this.vmKick = 0.1 + step[0]*0.018;
+    // recover timer resets pattern when not firing
+    this._recoilRecoverAt = performance.now() + 280;
     SBAudio.shoot(this.weapon.id);
     const cross=document.getElementById('sbCrosshair');
     if(cross&&!this.ads){ cross.classList.add('shooting'); setTimeout(()=>cross.classList.remove('shooting'),60); }
@@ -3535,7 +3647,7 @@ class SBPlayer {
     if(this.ads){ this.ads=false; this.camera.fov=this.baseFov; document.getElementById('sbScope')?.classList.remove('on'); this.vm.root.setEnabled(true); }
     this.currentWeaponId=id; this.weapon=SBWeapons[id];
     if(this.weapon.type==='melee'){ this.ammo=0; this.reserve=0; } else { this.ammo=this.weapon.magSize; this.reserve=this.weapon.maxReserve; }
-    this.isReloading=false; sbApplyWeaponModel(this.vm,id);
+    this.isReloading=false; this._shotIndex=0; sbApplyWeaponModel(this.vm,id);
   }
   buyWeapon(id){ const w=SBWeapons[id]; if(!w||w.price<=0) return false; if(this.money<w.price) return false; if(this.owned.has(id)){ this.switchWeapon(id); return true;} this.money-=w.price; this.owned.add(id); this.switchWeapon(id); SBAudio.buy(); return true; }
   buyArmor(type){
@@ -3793,7 +3905,9 @@ function sbStartBotsGame(){
   sbMode='bots';
   sbBotCount=parseInt(document.getElementById('sbBotCount')?.value||'3',10)||3;
   sbCurrentMap=document.getElementById('sbMapSelect')?.value||'dust';
+  sbLoadCustomMaps().then(()=>{ sbCreateMap(sbScene,sbCurrentMap); sbApplyCustomBoxes(sbScene,sbCurrentMap); });
   sbCreateMap(sbScene,sbCurrentMap);
+  sbApplyCustomBoxes(sbScene,sbCurrentMap);
   sbRound={ phase:'buy', timeLeft:15, scoreCT:0, scoreT:0, number:1, freeze:true };
   if(sbPlayer){ sbPlayer.money=800; sbPlayer.kills=0; sbPlayer.nades=0; sbPlayer.owned=new Set(['knife','glock']); sbPlayer.switchWeapon('glock'); }
   sbShowGameUI(true); sbGameActive=true; sbStartRound();
@@ -3888,6 +4002,7 @@ function sbUpsertRemote(p){
 function sbBeginOnlineMatch(map){
   sbCurrentMap=map||'dust';
   sbCreateMap(sbScene,sbCurrentMap);
+  sbApplyCustomBoxes(sbScene,sbCurrentMap);
   sbBots.forEach(b=>b.dispose()); sbBots=[];
   sbRound={ phase:'buy', timeLeft:12, scoreCT:0, scoreT:0, number:1, freeze:true };
   if(sbPlayer){ sbPlayer.money=800; sbPlayer.kills=0; sbPlayer.nades=0; sbPlayer.owned=new Set(['knife','glock']); sbPlayer.switchWeapon('glock'); sbPlayer.respawn(); }
@@ -3901,9 +4016,180 @@ function sbStartOnlineGame(){
   sbBeginOnlineMatch(sbCurrentMap);
 }
 
+
+/* ---- Admin map editor + custom maps (Supabase) ---- */
+let sbEditorMode = false;
+let sbCustomBoxes = []; // {x,y,z,w,h,d,col}
+let sbMapCustomCache = {}; // mapKey -> boxes
+
+function sbIsAdmin(){
+  const u = (currentUser && currentUser.username) ? currentUser.username : '';
+  return u.toLowerCase() === 'abdrakhman';
+}
+
+function sbOpenSkins(){
+  document.getElementById('sbBotsOptions').style.display='none';
+  document.getElementById('sbOnlineOptions').style.display='none';
+  document.getElementById('sbSkinsPanel').style.display='block';
+  sbRenderSkinGrid();
+}
+function sbCloseSkins(){
+  document.getElementById('sbSkinsPanel').style.display='none';
+  sbSetMode(sbMode);
+}
+function sbRenderSkinGrid(){
+  const grid=document.getElementById('sbSkinGrid'); if(!grid) return;
+  const st=sbLoadSkinState();
+  const weaponId = (sbPlayer && sbPlayer.currentWeaponId) || 'ak47';
+  const eq = sbGetEquippedSkin(weaponId);
+  grid.innerHTML = Object.values(SB_SKINS).map(sk=>{
+    const owned = sbOwnSkin(sk.id);
+    const active = eq===sk.id ? 'active' : '';
+    const price = sk.price>0 ? `<span class="price">${owned?'✓':('$' + sk.price)}</span>` : '';
+    return `<button type="button" class="sb-skin-btn ${active}" onclick="sbSelectSkin('${sk.id}')">
+      <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgb(${sk.body.map(x=>Math.round(x*255)).join(',')});margin-right:6px;"></span>
+      ${sk.name} ${price}
+    </button>`;
+  }).join('');
+}
+function sbSelectSkin(skinId){
+  const sk = SB_SKINS[skinId]; if(!sk) return;
+  const st = sbLoadSkinState();
+  st.owned = st.owned || [];
+  st.eq = st.eq || {};
+  if(!sbOwnSkin(skinId)){
+    // buy with player money if in game, else need money from last session
+    const money = sbPlayer ? sbPlayer.money : 0;
+    if(money < sk.price){ alert('Недостаточно денег в текущем матче (нужно $'+sk.price+')'); return; }
+    if(sbPlayer) sbPlayer.money -= sk.price;
+    st.owned.push(skinId);
+  }
+  const weaponId = (sbPlayer && sbPlayer.currentWeaponId) || 'ak47';
+  // equip for all weapons for simplicity, or per weapon:
+  st.eq[weaponId] = skinId;
+  // also set as default for rifles if buying gold etc
+  sbSaveSkinState(st);
+  if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
+  sbRenderSkinGrid();
+}
+
+async function sbLoadCustomMaps(){
+  try{
+    const { data, error } = await sb.from('blockstrike_maps').select('map_key, data');
+    if(error){ console.warn('blockstrike_maps', error.message); return; }
+    (data||[]).forEach(row=>{ sbMapCustomCache[row.map_key] = row.data || []; });
+  }catch(e){ console.warn(e); }
+}
+
+function sbApplyCustomBoxes(scene, mapKey){
+  const boxes = sbMapCustomCache[mapKey] || [];
+  boxes.forEach(b=>{
+    const m = sbBox(scene, b.x,b.y,b.z,b.w,b.h,b.d, b.col||[0.5,0.5,0.5]);
+    m.metadata = { custom:true, data:b };
+  });
+}
+
+// patch create map to apply customs - wrap
+const _sbCreateMapOrig = typeof sbCreateMap === 'function' ? sbCreateMap : null;
+
+function sbEnterEditor(){
+  if(!sbIsAdmin()){ alert('Редактор только для Abdrakhman'); return; }
+  sbEnsureEngine();
+  sbEditorMode = true;
+  sbGameActive = false;
+  document.exitPointerLock();
+  sbShowGameUI(false);
+  document.getElementById('sbMainMenu')?.classList.add('hidden');
+  document.getElementById('sbEditorBar')?.classList.add('show');
+  const key = document.getElementById('sbEditMapKey')?.value || 'dust';
+  sbCurrentMap = key;
+  sbCreateMap(sbScene, key);
+  sbApplyCustomBoxes(sbScene, key);
+  // click handler
+  if(!sbScene._editorPick){
+    sbScene._editorPick = true;
+    sbScene.onPointerObservable.add((pi)=>{
+      if(!sbEditorMode) return;
+      if(pi.type !== BABYLON.PointerEventTypes.POINTERPICK) return;
+      const pick = pi.pickInfo; if(!pick||!pick.hit) return;
+      if(pick.pickedMesh && pick.pickedMesh.metadata && pick.pickedMesh.metadata.custom){
+        // delete
+        const data = pick.pickedMesh.metadata.data;
+        sbMapCustomCache[sbCurrentMap] = (sbMapCustomCache[sbCurrentMap]||[]).filter(b=> b!==data && !(b.x===data.x&&b.y===data.y&&b.z===data.z));
+        pick.pickedMesh.dispose();
+        return;
+      }
+      if(pick.pickedMesh && pick.pickedMesh.name==='ground'){
+        const p = pick.pickedPoint;
+        sbEditorAddBoxAt(p.x, p.z);
+      }
+    });
+  }
+}
+
+function sbEditorAddBox(){
+  if(!sbPlayer) return;
+  const p = sbScene.activeCamera.position;
+  const dir = sbScene.activeCamera.getDirection(BABYLON.Vector3.Forward());
+  sbEditorAddBoxAt(p.x+dir.x*6, p.z+dir.z*6);
+}
+function sbEditorAddBoxAt(x,z){
+  const col = [0.4+Math.random()*0.4, 0.4+Math.random()*0.4, 0.4+Math.random()*0.4];
+  const b = { x:Math.round(x*2)/2, y:1, z:Math.round(z*2)/2, w:3, h:2, d:3, col };
+  if(!sbMapCustomCache[sbCurrentMap]) sbMapCustomCache[sbCurrentMap]=[];
+  sbMapCustomCache[sbCurrentMap].push(b);
+  const m = sbBox(sbScene, b.x,b.y,b.z,b.w,b.h,b.d,b.col);
+  m.metadata = { custom:true, data:b };
+}
+function sbEditorUndo(){
+  const arr = sbMapCustomCache[sbCurrentMap]||[];
+  if(!arr.length) return;
+  arr.pop();
+  sbCreateMap(sbScene, sbCurrentMap);
+  sbApplyCustomBoxes(sbScene, sbCurrentMap);
+}
+function sbEditorClear(){
+  sbMapCustomCache[sbCurrentMap]=[];
+  sbCreateMap(sbScene, sbCurrentMap);
+}
+async function sbEditorSave(){
+  if(!sbIsAdmin()) return;
+  const key = document.getElementById('sbEditMapKey')?.value || sbCurrentMap;
+  const data = sbMapCustomCache[key] || [];
+  try{
+    const { error } = await sb.from('blockstrike_maps').upsert({
+      map_key: key,
+      data: data,
+      updated_by: currentUser.id,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'map_key' });
+    if(error) throw error;
+    alert('Карта «'+key+'» сохранена. У всех подтянется при входе в игру.');
+  }catch(e){
+    alert('Не удалось сохранить. Нужна таблица blockstrike_maps в Supabase.\n\n'+e.message+'\n\nSQL:\ncreate table blockstrike_maps (\n  map_key text primary key,\n  data jsonb default \'[]\',\n  updated_by uuid,\n  updated_at timestamptz\n);\n\nЛокальный кэш всё равно обновлён.');
+  }
+}
+function sbEditorExit(){
+  sbEditorMode=false;
+  document.getElementById('sbEditorBar')?.classList.remove('show');
+  document.getElementById('sbMainMenu')?.classList.remove('hidden');
+}
+
+// When changing edit map dropdown
+document.addEventListener('change', e=>{
+  if(e.target && e.target.id==='sbEditMapKey' && sbEditorMode){
+    sbCurrentMap = e.target.value;
+    sbCreateMap(sbScene, sbCurrentMap);
+    sbApplyCustomBoxes(sbScene, sbCurrentMap);
+  }
+});
+
 function initSandboxGame(){
   sbEnsureEngine();
   setTimeout(()=>sbEngine?.resize(),50);
+  const btn=document.getElementById('sbEditMapsBtn');
+  if(btn) btn.style.display = sbIsAdmin() ? 'block' : 'none';
+  sbLoadCustomMaps();
 }
 
 function initApp(){
