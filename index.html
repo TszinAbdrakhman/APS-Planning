@@ -933,10 +933,13 @@
             <button type="button" onclick="sbEditorSetTool('spawn_t')">🟠 Спавн T</button>
             <button type="button" onclick="sbEditorSetTool('spawn_ct')">🔵 Спавн CT</button>
             <button type="button" onclick="sbEditorUndo()">↩ Отмена</button>
-            <button type="button" onclick="sbEditorClear()">Очистить кастом</button>
+            <button type="button" onclick="sbEditorClear()">Очистить ВСЁ</button>
             <button type="button" class="primary" onclick="sbEditorSave()">💾 Сохранить всем</button>
             <button type="button" onclick="sbEditorExit()">Выйти</button>
-            <div style="font-size:11px;color:#aaa;max-width:170px;">Вид сверху. Клик — поставить / удалить. Спавны — маркеры.</div>
+            <button type="button" onclick="sbEditorViewTop()">⬆ Сверху</button>
+            <button type="button" onclick="sbEditorViewSide()">↔ Сбоку</button>
+            <button type="button" onclick="sbEditorViewFree()">🕹 Свободно</button>
+            <div style="font-size:11px;color:#aaa;max-width:170px;">ЛКМ — инструмент. ПКМ — крутить камеру. СКМ/Alt+ЛКМ — панорама. Колесо — зум.</div>
           </div>
         </div>
       </div>
@@ -3780,8 +3783,9 @@ function sbBox(scene,x,y,z,w,h,d,col){
 function sbClearMap(){
   if(!sbScene) return;
   sbScene.meshes.slice().forEach(m=>{
-    if(m.name==='b'||m.name==='ground') m.dispose();
+    if(m.name==='b'||m.name==='ground'||m.name==='wall'||m.name==='c'||m.name==='spawn') m.dispose();
   });
+});
 }
 
 function sbMapSpawns(map){
@@ -3792,51 +3796,62 @@ function sbMapSpawns(map){
 
 function sbCreateMap(scene, mapId){
   sbClearMap();
+  // always ground + border walls
   const ground=BABYLON.MeshBuilder.CreateGround('ground',{width:90,height:90},scene);
   const gmat=new BABYLON.StandardMaterial('gmat',scene);
   gmat.specularColor=new BABYLON.Color3(0.04,0.04,0.04);
-  const wall=[0.28,0.28,0.32];
-  // boundary
-  sbBox(scene,0,3.5,46,92,7,1.8,wall); sbBox(scene,0,3.5,-46,92,7,1.8,wall);
-  sbBox(scene,-46,3.5,0,1.8,7,92,wall); sbBox(scene,46,3.5,0,1.8,7,92,wall);
+  const wall=[0.22,0.22,0.26];
+  function wallBox(x,y,z,w,h,d){
+    const m=sbBox(scene,x,y,z,w,h,d,wall); m.name='wall'; return m;
+  }
+  wallBox(0,3.5,46,92,7,1.8); wallBox(0,3.5,-46,92,7,1.8);
+  wallBox(-46,3.5,0,1.8,7,92); wallBox(46,3.5,0,1.8,7,92);
+
+  const data = sbNormalizeMapData(sbMapCustomCache[mapId]);
+  // If map was fully edited and saved as fullMap — only custom boxes (may be empty)
+  if(data.fullMap){
+    if(mapId==='mirage') gmat.diffuseColor=new BABYLON.Color3(0.45,0.40,0.28);
+    else if(mapId==='inferno') gmat.diffuseColor=new BABYLON.Color3(0.32,0.30,0.26);
+    else gmat.diffuseColor=new BABYLON.Color3(0.40,0.36,0.26);
+    ground.material=gmat;
+    return; // boxes applied by sbApplyCustomBoxes
+  }
 
   if(mapId==='mirage'){
     gmat.diffuseColor=new BABYLON.Color3(0.45,0.40,0.28); ground.material=gmat;
-    // A site / mid / B inspired
-    sbBox(scene,-18,1.5,12,10,3,10,[0.75,0.65,0.45]);
-    sbBox(scene,18,1.5,14,10,3,8,[0.75,0.65,0.45]);
-    sbBox(scene,0,1.2,0,4,2.4,14,[0.55,0.5,0.4]); // mid
-    sbBox(scene,-8,1,-8,3,2,6,[0.6,0.55,0.4]);
-    sbBox(scene,8,1,-6,3,2,5,[0.6,0.55,0.4]);
-    sbBox(scene,0,2,22,8,4,4,[0.7,0.6,0.42]);
-    sbBox(scene,-22,1.5,-10,5,3,6,[0.65,0.55,0.4]);
-    sbBox(scene,22,1.5,-8,5,3,6,[0.65,0.55,0.4]);
-    sbBox(scene,-4,0.7,6,2,1.4,2,[0.5,0.45,0.35]);
-    sbBox(scene,5,0.7,8,2,1.4,2,[0.5,0.45,0.35]);
+    sbBox(scene,-18,1.5,12,10,3,10,[0.55,0.48,0.32]);
+    sbBox(scene,18,1.5,14,10,3,8,[0.55,0.48,0.32]);
+    sbBox(scene,0,1.2,0,4,2.4,14,[0.4,0.36,0.3]);
+    sbBox(scene,-8,1,-8,3,2,6,[0.45,0.4,0.3]);
+    sbBox(scene,8,1,-6,3,2,5,[0.45,0.4,0.3]);
+    sbBox(scene,0,2,22,8,4,4,[0.5,0.44,0.3]);
+    sbBox(scene,-22,1.5,-10,5,3,6,[0.48,0.4,0.3]);
+    sbBox(scene,22,1.5,-8,5,3,6,[0.48,0.4,0.3]);
+    sbBox(scene,-4,0.7,6,2,1.4,2,[0.38,0.34,0.28]);
+    sbBox(scene,5,0.7,8,2,1.4,2,[0.38,0.34,0.28]);
   } else if(mapId==='inferno'){
     gmat.diffuseColor=new BABYLON.Color3(0.32,0.30,0.26); ground.material=gmat;
-    sbBox(scene,-16,1.5,10,8,3,12,[0.55,0.4,0.3]); // banana-ish
-    sbBox(scene,14,1.5,12,10,3,10,[0.5,0.38,0.28]);
-    sbBox(scene,0,1, -2,5,2,10,[0.48,0.4,0.32]);
-    sbBox(scene,-10,2,-14,4,4,4,[0.42,0.35,0.28]);
-    sbBox(scene,12,1.2,-12,6,2.4,5,[0.5,0.4,0.3]);
-    sbBox(scene,0,1.5,20,12,3,6,[0.55,0.42,0.32]);
-    sbBox(scene,-20,1,0,4,2,8,[0.45,0.38,0.3]);
-    sbBox(scene,20,1,2,4,2,8,[0.45,0.38,0.3]);
-  } else { // dust
+    sbBox(scene,-16,1.5,10,8,3,12,[0.4,0.3,0.24]);
+    sbBox(scene,14,1.5,12,10,3,10,[0.38,0.28,0.22]);
+    sbBox(scene,0,1,-2,5,2,10,[0.36,0.3,0.24]);
+    sbBox(scene,-10,2,-14,4,4,4,[0.32,0.26,0.22]);
+    sbBox(scene,12,1.2,-12,6,2.4,5,[0.38,0.3,0.24]);
+    sbBox(scene,0,1.5,20,12,3,6,[0.4,0.32,0.26]);
+    sbBox(scene,-20,1,0,4,2,8,[0.34,0.28,0.24]);
+    sbBox(scene,20,1,2,4,2,8,[0.34,0.28,0.24]);
+  } else {
     gmat.diffuseColor=new BABYLON.Color3(0.40,0.36,0.26); ground.material=gmat;
-    // long / A / B / mid / tunnels vibe
-    sbBox(scene,-18,1.5,8,6,3,16,[0.7,0.58,0.35]); // long doors side
-    sbBox(scene,16,1.5,10,8,3,10,[0.68,0.55,0.34]); // B
-    sbBox(scene,0,1.2,2,5,2.4,12,[0.55,0.48,0.32]); // mid
-    sbBox(scene,-6,1,-12,10,2,4,[0.6,0.5,0.35]);
-    sbBox(scene,8,1.5,-8,4,3,6,[0.58,0.48,0.32]);
-    sbBox(scene,0,2,20,8,4,5,[0.65,0.52,0.33]); // A site ramp area
-    sbBox(scene,-22,1,-4,4,2,8,[0.55,0.48,0.35]);
-    sbBox(scene,22,1.2,-2,4,2.4,6,[0.55,0.48,0.35]);
-    sbBox(scene,-3,0.6,8,2.2,1.2,2.2,[0.5,0.42,0.3]);
-    sbBox(scene,4,0.6,6,2.2,1.2,2.2,[0.5,0.42,0.3]);
-    sbBox(scene,0,0.5,-20,6,1,3,[0.58,0.5,0.36]);
+    sbBox(scene,-18,1.5,8,6,3,16,[0.5,0.42,0.28]);
+    sbBox(scene,16,1.5,10,8,3,10,[0.48,0.4,0.26]);
+    sbBox(scene,0,1.2,2,5,2.4,12,[0.4,0.35,0.26]);
+    sbBox(scene,-6,1,-12,10,2,4,[0.44,0.38,0.28]);
+    sbBox(scene,8,1.5,-8,4,3,6,[0.42,0.36,0.26]);
+    sbBox(scene,0,2,20,8,4,5,[0.48,0.4,0.26]);
+    sbBox(scene,-22,1,-4,4,2,8,[0.4,0.36,0.28]);
+    sbBox(scene,22,1.2,-2,4,2.4,6,[0.4,0.36,0.28]);
+    sbBox(scene,-3,0.6,8,2.2,1.2,2.2,[0.36,0.32,0.24]);
+    sbBox(scene,4,0.6,6,2.2,1.2,2.2,[0.36,0.32,0.24]);
+    sbBox(scene,0,0.5,-20,6,1,3,[0.42,0.38,0.28]);
   }
 }
 
@@ -4076,9 +4091,12 @@ function sbIsAdmin(){
 }
 
 function sbNormalizeMapData(data){
-  if(Array.isArray(data)) return { boxes:data, spawnsT:[], spawnsCT:[] };
-  if(data && typeof data==='object') return { boxes:data.boxes||[], spawnsT:data.spawnsT||[], spawnsCT:data.spawnsCT||[] };
-  return { boxes:[], spawnsT:[], spawnsCT:[] };
+  if(Array.isArray(data)) return { boxes:data, spawnsT:[], spawnsCT:[], fullMap:false };
+  if(data && typeof data==='object') return {
+    boxes:data.boxes||[], spawnsT:data.spawnsT||[], spawnsCT:data.spawnsCT||[],
+    fullMap: !!data.fullMap
+  };
+  return { boxes:[], spawnsT:[], spawnsCT:[], fullMap:false };
 }
 
 function sbOpenSkins(){
@@ -4330,6 +4348,12 @@ function sbEditorSetTool(t){
     wrap.classList.add('editor-mode');
     wrap.style.cursor = t==='delete' ? 'not-allowed' : (t==='move'||t==='rotate' ? 'grab' : 'crosshair');
   }
+  // keep LMB for tools unless free camera mode
+  try{
+    if(sbEditorCam?.inputs?.attached?.pointers){
+      sbEditorCam.inputs.attached.pointers.buttons = (window.sbEditorViewMode==='free') ? [0,1,2] : [1,2];
+    }
+  }catch(e){}
   ['place','move','rotate','delete'].forEach(name=>{
     const el = document.getElementById('sbTool'+name.charAt(0).toUpperCase()+name.slice(1));
     // ids: sbToolPlace, sbToolMove, sbToolRot, sbToolDel
@@ -4339,6 +4363,81 @@ function sbEditorSetTool(t){
     const el=document.getElementById(map[k]);
     if(el) el.style.outline = (k===t) ? '2px solid #E8A33D' : 'none';
   });
+}
+
+
+function sbEditorHarvestBaseMeshes(){
+  // Turn procedural boxes into custom editable entries (once per edit session if not fullMap yet)
+  const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+  if(pack.fullMap && pack.boxes.length){
+    // already full custom — re-tag meshes
+    sbScene.meshes.forEach(m=>{
+      if(m.name==='b' && !m.metadata){
+        m.metadata = { custom:true, data:{ shape:'box', x:m.position.x, y:m.position.y, z:m.position.z, w:1, h:1, d:1, col:[0.5,0.5,0.5] } };
+      }
+    });
+    return;
+  }
+  const harvested = [];
+  sbScene.meshes.forEach(m=>{
+    if(m.name!=='b') return;
+    if(m.metadata && m.metadata.custom) return;
+    // estimate size from bounding box
+    m.computeWorldMatrix(true);
+    const bi = m.getBoundingInfo().boundingBox;
+    const size = bi.extendSizeWorld;
+    const w = Math.max(0.5, Math.round(size.x*2)*2);
+    const h = Math.max(0.5, Math.round(size.y*2)*2);
+    const d = Math.max(0.5, Math.round(size.z*2)*2);
+    let col = [0.5,0.5,0.5];
+    if(m.material && m.material.diffuseColor){
+      const dc=m.material.diffuseColor; col=[dc.r,dc.g,dc.b];
+    }
+    const b = { shape:'box', x:m.position.x, y:m.position.y, z:m.position.z, w, h, d, col, rotY:m.rotation.y||0 };
+    harvested.push(b);
+    m.metadata = { custom:true, data:b };
+  });
+  // merge: base harvested + existing custom (customs already in scene from apply)
+  // Prefer: if we harvested base, set boxes = harvested only from current scene metadata
+  const all = [];
+  sbScene.meshes.forEach(m=>{
+    if(m.metadata && m.metadata.custom && m.metadata.data) all.push(m.metadata.data);
+  });
+  pack.boxes = all;
+  pack.fullMap = true; // from now on this map is fully data-driven
+  sbMapCustomCache[sbCurrentMap] = pack;
+}
+
+
+function sbEditorViewTop(){
+  if(!sbEditorCam) return;
+  window.sbEditorViewMode = 'top';
+  sbEditorCam.alpha = -Math.PI/2;
+  sbEditorCam.beta = 0.12;
+  sbEditorCam.radius = 55;
+  sbEditorCam.setTarget(new BABYLON.Vector3(0,0,0));
+}
+function sbEditorViewSide(){
+  if(!sbEditorCam) return;
+  window.sbEditorViewMode = 'side';
+  sbEditorCam.alpha = 0;
+  sbEditorCam.beta = Math.PI/2 - 0.15;
+  sbEditorCam.radius = 45;
+  sbEditorCam.setTarget(new BABYLON.Vector3(0,2,0));
+}
+function sbEditorViewFree(){
+  if(!sbEditorCam) return;
+  window.sbEditorViewMode = 'free';
+  sbEditorCam.alpha = -Math.PI/3;
+  sbEditorCam.beta = 0.9;
+  sbEditorCam.radius = 40;
+  sbEditorCam.setTarget(new BABYLON.Vector3(0,1,0));
+  // In free mode allow LMB rotate too for convenience
+  try {
+    if(sbEditorCam.inputs?.attached?.pointers){
+      sbEditorCam.inputs.attached.pointers.buttons = [0, 1, 2];
+    }
+  } catch(e){}
 }
 
 function sbEnterEditor(){
@@ -4358,20 +4457,30 @@ function sbEnterEditor(){
   sbCurrentMap = key;
   sbCreateMap(sbScene, key);
   sbApplyCustomBoxes(sbScene, key);
+  // Convert default map blocks into editable objects (so they can be deleted/moved)
+  sbEditorHarvestBaseMeshes();
 
   if(sbEditorCam) sbEditorCam.dispose();
-  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.01, 80, new BABYLON.Vector3(0,0,0), sbScene);
-  sbEditorCam.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
-  const aspect = (sbCanvas.clientWidth||800) / Math.max(1, sbCanvas.clientHeight||600);
-  const ortho = 48;
-  sbEditorCam.orthoLeft=-ortho*aspect; sbEditorCam.orthoRight=ortho*aspect;
-  sbEditorCam.orthoTop=ortho; sbEditorCam.orthoBottom=-ortho;
-  sbEditorCam.lowerRadiusLimit=30; sbEditorCam.upperRadiusLimit=140;
-  sbEditorCam.panningSensibility = 40;
+  // Perspective free camera: top by default, can tilt to side and zoom
+  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.15, 55, new BABYLON.Vector3(0,0,0), sbScene);
+  sbEditorCam.mode = BABYLON.Camera.PERSPECTIVE_CAMERA;
+  sbEditorCam.lowerBetaLimit = 0.05;
+  sbEditorCam.upperBetaLimit = Math.PI/2 - 0.05;
+  sbEditorCam.lowerRadiusLimit = 5;
+  sbEditorCam.upperRadiusLimit = 160;
+  sbEditorCam.wheelPrecision = 6;
+  sbEditorCam.panningSensibility = 25;
+  sbEditorCam.angularSensibilityX = 800;
+  sbEditorCam.angularSensibilityY = 800;
   sbEditorCam.attachControl(sbCanvas, true);
-  // middle/right pan, wheel zoom — left click for tools
-  sbEditorCam.inputs.attached.pointers.buttons = [1, 2];
+  // LMB reserved for tools; RMB rotate, MMB pan, wheel zoom
+  try {
+    if(sbEditorCam.inputs?.attached?.pointers){
+      sbEditorCam.inputs.attached.pointers.buttons = [1, 2];
+    }
+  } catch(e){}
   sbScene.activeCamera = sbEditorCam;
+  window.sbEditorViewMode = 'top';
   sbEditorSetTool('place');
 
   if(!sbScene._editorPick){
@@ -4435,14 +4544,33 @@ function sbEnterEditor(){
       const pick = pi.pickInfo; if(!pick||!pick.hit) return;
       const mesh = pick.pickedMesh;
 
-      // DELETE tool
+      // DELETE tool — any map object except ground and border walls
       if(sbEditorTool==='delete'){
+        if(mesh && mesh.name==='ground') return;
         if(mesh && mesh.metadata && mesh.metadata.custom){
           const data = mesh.metadata.data;
           const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-          pack.boxes = pack.boxes.filter(b=> !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
+          pack.boxes = pack.boxes.filter(b=> b!==data && !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
+          pack.fullMap = true;
           sbMapCustomCache[sbCurrentMap]=pack;
           mesh.dispose();
+        } else if(mesh && mesh.name==='b'){
+          // base block without metadata yet
+          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+          pack.fullMap = true;
+          mesh.dispose();
+          // re-harvest remaining
+          pack.boxes = [];
+          sbScene.meshes.forEach(m=>{
+            if(m.metadata && m.metadata.custom && m.metadata.data) pack.boxes.push(m.metadata.data);
+            else if(m.name==='b' && m!==mesh){
+              m.computeWorldMatrix(true);
+              const bi=m.getBoundingInfo().boundingBox; const size=bi.extendSizeWorld;
+              const b={shape:'box',x:m.position.x,y:m.position.y,z:m.position.z,w:Math.max(0.5,size.x*2),h:Math.max(0.5,size.y*2),d:Math.max(0.5,size.z*2),col:[0.5,0.5,0.5]};
+              m.metadata={custom:true,data:b}; pack.boxes.push(b);
+            }
+          });
+          sbMapCustomCache[sbCurrentMap]=pack;
         } else if(mesh && mesh.metadata && mesh.metadata.spawn){
           const meta = mesh.metadata;
           const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
@@ -4521,13 +4649,34 @@ function sbEditorUndo(){
   sbApplyCustomBoxes(sbScene, sbCurrentMap);
 }
 function sbEditorClear(){
-  sbMapCustomCache[sbCurrentMap]={ boxes:[], spawnsT:[], spawnsCT:[] };
+  if(!confirm('Удалить ВСЕ объекты на карте (включая исходные)? Останутся только пол и стены.')) return;
+  sbMapCustomCache[sbCurrentMap]={ boxes:[], spawnsT:[], spawnsCT:[], fullMap:true };
   sbCreateMap(sbScene, sbCurrentMap);
+  // no custom boxes
 }
 async function sbEditorSave(){
   if(!sbIsAdmin()) return;
   const key = document.getElementById('sbEditMapKey')?.value || sbCurrentMap;
   const data = sbNormalizeMapData(sbMapCustomCache[key]);
+  data.fullMap = true;
+  // refresh boxes from live scene meshes
+  data.boxes = [];
+  sbScene.meshes.forEach(m=>{
+    if(m.metadata && m.metadata.custom && m.metadata.data){
+      const d=m.metadata.data;
+      d.x=m.position.x; d.y=m.position.y; d.z=m.position.z; d.rotY=m.rotation.y||0;
+      data.boxes.push(d);
+    }
+  });
+  // spawns from markers
+  data.spawnsT=[]; data.spawnsCT=[];
+  sbScene.meshes.forEach(m=>{
+    if(m.metadata && m.metadata.spawn){
+      const s={x:m.position.x, z:m.position.z};
+      if(m.metadata.team==='CT') data.spawnsCT.push(s); else data.spawnsT.push(s);
+    }
+  });
+  sbMapCustomCache[key]=data;
   try{
     const { error } = await sb.from('blockstrike_maps').upsert({
       map_key: key, data, updated_by: currentUser.id, updated_at: new Date().toISOString()
