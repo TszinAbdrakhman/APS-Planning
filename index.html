@@ -3477,72 +3477,187 @@ function sbApplyWeaponModel(vm, weaponId){
 }
 
 
-/* ---- Solid collisions for map geometry ---- */
+/* ---- CharacterController-style collisions (Unity-inspired) ---- */
+// Capsule vs AABB, contact normals, slide, ground probe, step offset
+
 function sbCollectSolids(){
   if(!sbScene) return [];
   const solids = [];
   sbScene.meshes.forEach(m=>{
-    if(!m || m.name==='ground') return;
+    if(!m || !m.isEnabled()) return;
     if(m.name!=='b' && m.name!=='wall' && m.name!=='c') return;
-    if(!m.isEnabled()) return;
     try{
       m.computeWorldMatrix(true);
       const bi = m.getBoundingInfo().boundingBox;
-      const min = bi.minimumWorld;
-      const max = bi.maximumWorld;
-      solids.push({ minX:min.x, maxX:max.x, minY:min.y, maxY:max.y, minZ:min.z, maxZ:max.z });
+      const min = bi.minimumWorld, max = bi.maximumWorld;
+      // slight skin to reduce jitter
+      const skin = 0.02;
+      solids.push({
+        minX:min.x-skin, maxX:max.x+skin,
+        minY:min.y, maxY:max.y,
+        minZ:min.z-skin, maxZ:max.z+skin
+      });
     }catch(e){}
   });
   return solids;
 }
 
-// Horizontal cylinder (XZ) vs AABB: push out of solid
-function sbResolveXZ(x, z, radius, solids){
+// Closest point on AABB to point
+function sbClosestOnAABB(px, py, pz, s){
+  return {
+    x: Math.max(s.minX, Math.min(px, s.maxX)),
+    y: Math.max(s.minY, Math.min(py, s.maxY)),
+    z: Math.max(s.minZ, Math.min(pz, s.maxZ))
+  };
+}
+
+/**
+ * Resolve capsule (vertical) against AABB solids.
+ * pos = feet position (bottom of capsule), height = full capsule height, radius = capsule radius
+ * Returns {x,y,z, grounded, groundY, normal}
+ */
+function sbMoveCapsule(px, py, pz, dx, dy, dz, radius, height, solids, opts){
+  opts = opts || {};
+  const stepOffset = opts.stepOffset != null ? opts.stepOffset : 0.45;
+  const slopeLimit = opts.slopeLimit != null ? opts.slopeLimit : 0.55; // cos angle ~56deg, use min ny
+  const skin = 0.01;
+
+  let x = px + dx, y = py + dy, z = pz + dz;
+  let grounded = false;
+  let groundY = 0;
+  let groundN = { x:0, y:1, z:0 };
+
+  // --- 1) Ground probe (like SphereCast down) ---
+  const probeR = radius * 0.9;
+  let highest = 0;
+  let foundGround = false;
   for(let i=0;i<solids.length;i++){
     const s = solids[i];
-    // only collide if roughly at body height handled by caller filter, use all solids in XZ
-    const nearestX = Math.max(s.minX, Math.min(x, s.maxX));
-    const nearestZ = Math.max(s.minZ, Math.min(z, s.maxZ));
-    let dx = x - nearestX;
-    let dz = z - nearestZ;
-    const distSq = dx*dx + dz*dz;
-    if(distSq >= radius*radius) continue;
-    // inside or overlapping
-    if(distSq < 1e-8){
-      // center inside box — push out via smallest axis
-      const left = x - s.minX, right = s.maxX - x;
-      const near = z - s.minZ, far = s.maxZ - z;
-      const m = Math.min(left, right, near, far);
-      if(m===left) x = s.minX - radius;
-      else if(m===right) x = s.maxX + radius;
-      else if(m===near) z = s.minZ - radius;
-      else z = s.maxZ + radius;
-    } else {
-      const dist = Math.sqrt(distSq);
-      const push = (radius - dist) / dist;
-      x += dx * push;
-      z += dz * push;
+    // feet near top surface?
+    if(x+probeR < s.minX || x-probeR > s.maxX || z+probeR < s.minZ || z-probeR > s.maxZ) continue;
+    const top = s.maxY;
+    // accept surface if we're above it or within step range while falling/standing
+    if(top > highest && top <= y + stepOffset + 0.05){
+      highest = top;
+      foundGround = true;
     }
   }
-  return { x, z };
-}
+  // also world ground plane y=0
+  if(0 <= y + stepOffset + 0.05){ /* always */ }
 
-// Highest surface under feet (within radius), for standing on boxes
-function sbFloorUnder(x, z, radius, eyeHeight, solids){
-  // ground at y=0 → eye at eyeHeight
-  let best = 0;
+  if(foundGround){
+    groundY = highest;
+  } else {
+    groundY = 0;
+  }
+
+  // --- 2) Horizontal move with iterative depenetration + slide ---
+  for(let iter=0; iter<4; iter++){
+    let hit = false;
+    let nx=0, ny=0, nz=0, minPen=1e9;
+
+    const midY = y + height * 0.5;
+    // sample capsule as two spheres + mid
+    const samples = [
+      {x:x, y:y + radius, z:z},
+      {x:x, y:midY, z:z},
+      {x:x, y:y + height - radius, z:z}
+    ];
+
+    for(let si=0; si<solids.length; si++){
+      const s = solids[si];
+      // skip pure floor under us (we'll stand on it)
+      if(s.maxY <= y + stepOffset && s.maxY >= y - 0.2) continue;
+
+      for(let k=0;k<samples.length;k++){
+        const p = samples[k];
+        // ignore contacts too low (step/floor)
+        if(p.y < y + stepOffset * 0.85) continue;
+
+        const cpt = sbClosestOnAABB(p.x, p.y, p.z, s);
+        let vx = p.x - cpt.x, vy = p.y - cpt.y, vz = p.z - cpt.z;
+        const distSq = vx*vx + vy*vy + vz*vz;
+
+        if(distSq >= radius*radius) continue;
+
+        // penetration
+        let dist = Math.sqrt(Math.max(distSq, 1e-12));
+        let pen = radius - dist;
+        if(distSq < 1e-10){
+          // deep inside: push via dominant axis
+          const dl = p.x - s.minX, dr = s.maxX - p.x;
+          const db = p.z - s.minZ, df = s.maxZ - p.z;
+          const dd = p.y - s.minY, du = s.maxY - p.y;
+          const m = Math.min(dl,dr,db,df,du);
+          if(m===dl){ vx=-1; vy=0; vz=0; pen=dl+radius; }
+          else if(m===dr){ vx=1; vy=0; vz=0; pen=dr+radius; }
+          else if(m===db){ vx=0; vy=0; vz=-1; pen=db+radius; }
+          else if(m===df){ vx=0; vy=0; vz=1; pen=df+radius; }
+          else { continue; } // vertical handled separately
+          dist = 1;
+        }
+
+        const inv = 1/dist;
+        const cx = vx*inv, cy = vy*inv, cz = vz*inv;
+
+        // if normal is mostly floor-like upward, don't treat as wall
+        if(cy > 0.7) continue;
+
+        if(pen < minPen){
+          minPen = pen;
+          nx = cx; ny = cy; nz = cz;
+          hit = true;
+        }
+      }
+    }
+
+    if(!hit) break;
+
+    // depenetrate
+    x += nx * (minPen + skin);
+    z += nz * (minPen + skin);
+    // slight vertical only if not floor
+    if(ny < 0.3) y += ny * (minPen + skin) * 0.15;
+
+    // slide remaining horizontal velocity against normal (for this step we already applied dx)
+    // approximate: remove component into normal
+    // (done once after loop for continuous motion feel)
+  }
+
+  // --- 3) Snap to ground / gravity landing ---
+  const eyeOffset = height; // we pass feet; player uses eye = feet+height conceptually differently
+  // Here py is feet Y.
+  const targetFeet = groundY;
+  if(dy <= 0.0001){
+    if(y <= targetFeet + stepOffset + 0.02){
+      y = targetFeet;
+      grounded = true;
+      groundN = { x:0, y:1, z:0 };
+    }
+  }
+  if(y < targetFeet){
+    y = targetFeet;
+    grounded = true;
+  }
+
+  // --- 4) Ceiling ---
+  const topY = y + height;
   for(let i=0;i<solids.length;i++){
     const s = solids[i];
-    // expand top face by radius in xz
     if(x+radius < s.minX || x-radius > s.maxX || z+radius < s.minZ || z-radius > s.maxZ) continue;
-    if(s.maxY > best && s.maxY < 40) best = s.maxY;
+    if(topY > s.minY && y < s.minY && dy >= 0){
+      // hit ceiling
+      y = s.minY - height - skin;
+      grounded = false;
+    }
   }
-  return best;
-}
 
-// Filter solids that intersect body vertical range for wall collision
-function sbWallSolids(solids, footY, headY){
-  return solids.filter(s=> s.maxY > footY+0.15 && s.minY < headY-0.1);
+  // world bounds soft
+  x = Math.max(-42, Math.min(42, x));
+  z = Math.max(-42, Math.min(42, z));
+  if(y < 0){ y = 0; grounded = true; }
+
+  return { x, y, z, grounded, groundY, groundN };
 }
 
 class SBBot {
@@ -3567,22 +3682,18 @@ class SBBot {
     }
     if(this.targetDir.lengthSquared()>0.01){
       const step = this.targetDir.normalize().scale(this.speed*dt);
-      let bx = this.root.position.x + step.x;
-      let bz = this.root.position.z + step.z;
       const solids = sbCollectSolids();
-      const bodyR = 0.4;
-      const footY = 0.1, headY = 1.7;
-      const walls = sbWallSolids(solids, footY, headY);
-      const resolved = sbResolveXZ(bx, bz, bodyR, walls);
-      bx = resolved.x; bz = resolved.z;
-      this.root.position.x = BABYLON.Scalar.Clamp(bx, -42, 42);
-      this.root.position.z = BABYLON.Scalar.Clamp(bz, -42, 42);
+      // root is at feet-ish (humanoid origin at y=0)
+      const feetY = this.root.position.y;
+      const mv = sbMoveCapsule(
+        this.root.position.x, feetY, this.root.position.z,
+        step.x, -0.5*dt, step.z,
+        0.38, 1.7, solids, { stepOffset:0.4 }
+      );
+      this.root.position.x = mv.x;
+      this.root.position.z = mv.z;
+      this.root.position.y = mv.y + Math.abs(Math.sin(this.animT))*0.04;
       this.root.rotation.y=Math.atan2(this.targetDir.x,this.targetDir.z);
-      const floorTop = sbFloorUnder(this.root.position.x, this.root.position.z, bodyR*0.8, 1.0, solids);
-      this.root.position.y = floorTop + Math.abs(Math.sin(this.animT))*0.04;
-    } else {
-      this.root.position.x=BABYLON.Scalar.Clamp(this.root.position.x,-42,42);
-      this.root.position.z=BABYLON.Scalar.Clamp(this.root.position.z,-42,42);
     }
     if(dist<16&&dist>3&&this.shootCooldown<=0){
       const face=new BABYLON.Vector3(Math.sin(this.root.rotation.y),0,Math.cos(this.root.rotation.y));
@@ -3695,41 +3806,33 @@ class SBPlayer {
     this.velocity.y+=this.gravity*dt;
 
     const solids = sbCollectSolids();
-    const bodyR = 0.35;
     const eyeH = this.crouching ? this.crouchH : this.standH;
+    const radius = this.crouching ? 0.32 : 0.35;
+    const capsuleH = eyeH; // camera at eye ≈ top of capsule; feet = eye - height
+    // feet position
+    const feetX = this.camera.position.x;
+    const feetY = this.camera.position.y - eyeH;
+    const feetZ = this.camera.position.z;
 
-    // move XZ with collision
-    let nx = this.camera.position.x + this.velocity.x * dt;
-    let nz = this.camera.position.z + this.velocity.z * dt;
-    const footY = this.camera.position.y - eyeH;
-    const headY = this.camera.position.y + 0.15;
-    const walls = sbWallSolids(solids, footY + 0.3, headY);
-    const resolved = sbResolveXZ(nx, nz, bodyR, walls);
-    nx = resolved.x; nz = resolved.z;
+    const mv = sbMoveCapsule(
+      feetX, feetY, feetZ,
+      this.velocity.x * dt,
+      this.velocity.y * dt,
+      this.velocity.z * dt,
+      radius, capsuleH, solids,
+      { stepOffset: 0.5 }
+    );
 
-    // move Y
-    let ny = this.camera.position.y + this.velocity.y * dt;
-    const floorTop = sbFloorUnder(nx, nz, bodyR*0.85, eyeH, solids);
-    const minEye = floorTop + eyeH;
-    this.onGround = false;
-    if(ny <= minEye + 0.02 && this.velocity.y <= 0){
-      ny = minEye;
+    this.onGround = mv.grounded;
+    if(this.onGround && this.velocity.y < 0) this.velocity.y = 0;
+    // hit ceiling
+    if(!mv.grounded && this.velocity.y > 0 && mv.y < feetY + this.velocity.y*dt - 0.01){
       this.velocity.y = 0;
-      this.onGround = true;
-    }
-    // ceiling
-    for(const s of walls){
-      if(nx+bodyR > s.minX && nx-bodyR < s.maxX && nz+bodyR > s.minZ && nz-bodyR < s.maxZ){
-        if(ny + 0.2 > s.minY && this.camera.position.y + 0.2 <= s.minY + 0.05 && this.velocity.y > 0){
-          ny = s.minY - 0.2;
-          this.velocity.y = 0;
-        }
-      }
     }
 
-    this.camera.position.x = BABYLON.Scalar.Clamp(nx, -42, 42);
-    this.camera.position.z = BABYLON.Scalar.Clamp(nz, -42, 42);
-    this.camera.position.y = ny;
+    this.camera.position.x = mv.x;
+    this.camera.position.z = mv.z;
+    this.camera.position.y = mv.y + eyeH;
 
     if(this.onGround&&move.lengthSquared()>0.1){ this.stepTimer-=dt; if(this.stepTimer<=0){ this.stepTimer=sprint?0.28:0.4; SBAudio.step(); }}
     if(this.isReloading&&performance.now()>=this.reloadEnd) this.finishReload();
