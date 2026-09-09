@@ -379,7 +379,9 @@
 
   /* ---- 3D SANDBOX / BLOCKSTRIKE ---- */
   .sb-card{padding:0; overflow:hidden;}
-  .sb-canvas-wrap{position:relative; width:100%; height:560px; background:#8fb3d9; border-radius:12px; overflow:hidden; cursor:none;}
+  .sb-canvas-wrap{position:relative; width:100%; height:560px; background:#3a4550; border-radius:12px; overflow:hidden; cursor:none;}
+  .sb-canvas-wrap.editor-mode{cursor:crosshair;}
+  .sb-canvas-wrap.editor-mode #sbCanvas{cursor:crosshair;}
   .sb-canvas-wrap:fullscreen{height:100vh; border-radius:0;}
   #sbCanvas{width:100%; height:100%; display:block; touch-action:none; outline:none;}
   .sb-dpad{position:absolute; left:14px; bottom:14px; z-index:3; display:grid; grid-template-columns:44px 44px 44px; grid-template-rows:44px 44px 44px; gap:4px; user-select:none;}
@@ -924,7 +926,10 @@
             <input type="range" id="sbEditH" min="0.5" max="12" step="0.5" value="2" oninput="document.getElementById('sbSzH').textContent=this.value">
             <label style="font-size:11px;color:#aaa;">Глубина <span id="sbSzD">3</span></label>
             <input type="range" id="sbEditD" min="1" max="20" step="0.5" value="3" oninput="document.getElementById('sbSzD').textContent=this.value">
-            <button type="button" onclick="sbEditorSetTool('place')">🧱 Ставить</button>
+            <button type="button" id="sbToolPlace" onclick="sbEditorSetTool('place')">🧱 Ставить</button>
+            <button type="button" id="sbToolMove" onclick="sbEditorSetTool('move')">✥ Двигать</button>
+            <button type="button" id="sbToolRot" onclick="sbEditorSetTool('rotate')">⟳ Крутить</button>
+            <button type="button" id="sbToolDel" onclick="sbEditorSetTool('delete')">🗑 Удалить</button>
             <button type="button" onclick="sbEditorSetTool('spawn_t')">🟠 Спавн T</button>
             <button type="button" onclick="sbEditorSetTool('spawn_ct')">🔵 Спавн CT</button>
             <button type="button" onclick="sbEditorUndo()">↩ Отмена</button>
@@ -3757,10 +3762,10 @@ function sbUpdateGrenades(dt){
 
 function sbCreateScene(){
   const scene=new BABYLON.Scene(sbEngine);
-  scene.clearColor=new BABYLON.Color4(0.52,0.68,0.86,1);
-  scene.fogMode=BABYLON.Scene.FOGMODE_EXP2; scene.fogDensity=0.007; scene.fogColor=new BABYLON.Color3(0.55,0.7,0.85);
-  const hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0.3,1,0.4),scene); hemi.intensity=0.95;
-  const dir=new BABYLON.DirectionalLight('dir',new BABYLON.Vector3(-0.45,-1,0.35),scene); dir.intensity=0.75;
+  scene.clearColor=new BABYLON.Color4(0.22,0.26,0.32,1);
+  scene.fogMode=BABYLON.Scene.FOGMODE_EXP2; scene.fogDensity=0.007; scene.fogColor=new BABYLON.Color3(0.25,0.28,0.32);
+  const hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0.3,1,0.4),scene); hemi.intensity=0.72;
+  const dir=new BABYLON.DirectionalLight('dir',new BABYLON.Vector3(-0.45,-1,0.35),scene); dir.intensity=0.45;
   return scene;
 }
 
@@ -3796,7 +3801,7 @@ function sbCreateMap(scene, mapId){
   sbBox(scene,-46,3.5,0,1.8,7,92,wall); sbBox(scene,46,3.5,0,1.8,7,92,wall);
 
   if(mapId==='mirage'){
-    gmat.diffuseColor=new BABYLON.Color3(0.72,0.62,0.42); ground.material=gmat;
+    gmat.diffuseColor=new BABYLON.Color3(0.45,0.40,0.28); ground.material=gmat;
     // A site / mid / B inspired
     sbBox(scene,-18,1.5,12,10,3,10,[0.75,0.65,0.45]);
     sbBox(scene,18,1.5,14,10,3,8,[0.75,0.65,0.45]);
@@ -3809,7 +3814,7 @@ function sbCreateMap(scene, mapId){
     sbBox(scene,-4,0.7,6,2,1.4,2,[0.5,0.45,0.35]);
     sbBox(scene,5,0.7,8,2,1.4,2,[0.5,0.45,0.35]);
   } else if(mapId==='inferno'){
-    gmat.diffuseColor=new BABYLON.Color3(0.45,0.42,0.35); ground.material=gmat;
+    gmat.diffuseColor=new BABYLON.Color3(0.32,0.30,0.26); ground.material=gmat;
     sbBox(scene,-16,1.5,10,8,3,12,[0.55,0.4,0.3]); // banana-ish
     sbBox(scene,14,1.5,12,10,3,10,[0.5,0.38,0.28]);
     sbBox(scene,0,1, -2,5,2,10,[0.48,0.4,0.32]);
@@ -3819,7 +3824,7 @@ function sbCreateMap(scene, mapId){
     sbBox(scene,-20,1,0,4,2,8,[0.45,0.38,0.3]);
     sbBox(scene,20,1,2,4,2,8,[0.45,0.38,0.3]);
   } else { // dust
-    gmat.diffuseColor=new BABYLON.Color3(0.62,0.55,0.38); ground.material=gmat;
+    gmat.diffuseColor=new BABYLON.Color3(0.40,0.36,0.26); ground.material=gmat;
     // long / A / B / mid / tunnels vibe
     sbBox(scene,-18,1.5,8,6,3,16,[0.7,0.58,0.35]); // long doors side
     sbBox(scene,16,1.5,10,8,3,10,[0.68,0.55,0.34]); // B
@@ -4058,7 +4063,8 @@ function sbStartOnlineGame(){
 
 /* ---- Admin map editor + custom maps (Supabase) ---- */
 let sbEditorMode = false;
-let sbEditorTool = 'place'; // place | spawn_t | spawn_ct
+let sbEditorTool = 'place'; // place | move | rotate | delete | spawn_t | spawn_ct
+let sbDrag = null; // { mesh, mode, lastX, lastZ, startRot }
 let sbMapCustomCache = {}; // mapKey -> { boxes:[], spawnsT:[], spawnsCT:[] }
 let sbEditorCam = null;
 let sbSkinPreview = { engine:null, scene:null, gun:null, mat:null };
@@ -4292,6 +4298,7 @@ function sbShapeMesh(scene, b){
     m = BABYLON.MeshBuilder.CreateBox('c', { width:b.w, height:b.h, depth:b.d }, scene);
   }
   m.position.set(b.x, b.y, b.z);
+  if(b.rotY) m.rotation.y = b.rotY;
   m.material = mat;
   m.metadata = { custom:true, data:b };
   return m;
@@ -4315,59 +4322,158 @@ function sbApplyCustomBoxes(scene, mapKey){
   (data.spawnsCT||[]).forEach(s=> sbSpawnMarker(scene, s.x, s.z, 'CT'));
 }
 
-function sbEditorSetTool(t){ sbEditorTool = t; }
+function sbEditorSetTool(t){
+  sbEditorTool = t;
+  sbDrag = null;
+  const wrap = document.getElementById('sbCanvasWrap');
+  if(wrap){
+    wrap.classList.add('editor-mode');
+    wrap.style.cursor = t==='delete' ? 'not-allowed' : (t==='move'||t==='rotate' ? 'grab' : 'crosshair');
+  }
+  ['place','move','rotate','delete'].forEach(name=>{
+    const el = document.getElementById('sbTool'+name.charAt(0).toUpperCase()+name.slice(1));
+    // ids: sbToolPlace, sbToolMove, sbToolRot, sbToolDel
+  });
+  const map = { place:'sbToolPlace', move:'sbToolMove', rotate:'sbToolRot', delete:'sbToolDel' };
+  Object.keys(map).forEach(k=>{
+    const el=document.getElementById(map[k]);
+    if(el) el.style.outline = (k===t) ? '2px solid #E8A33D' : 'none';
+  });
+}
 
 function sbEnterEditor(){
   if(!sbIsAdmin()){ alert('Редактор только для Abdrakhman'); return; }
   sbEnsureEngine();
   sbEditorMode = true;
   sbGameActive = false;
+  sbDrag = null;
   document.exitPointerLock();
   sbShowGameUI(false);
   document.getElementById('sbMainMenu')?.classList.add('hidden');
   document.getElementById('sbEditorBar')?.classList.add('show');
+  const wrap = document.getElementById('sbCanvasWrap');
+  if(wrap){ wrap.classList.add('editor-mode'); wrap.style.cursor='crosshair'; }
+
   const key = document.getElementById('sbEditMapKey')?.value || 'dust';
   sbCurrentMap = key;
   sbCreateMap(sbScene, key);
   sbApplyCustomBoxes(sbScene, key);
 
-  // Top-down orthographic camera
   if(sbEditorCam) sbEditorCam.dispose();
-  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.05, 70, new BABYLON.Vector3(0,0,0), sbScene);
+  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.01, 80, new BABYLON.Vector3(0,0,0), sbScene);
   sbEditorCam.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
-  const aspect = sbCanvas.width / Math.max(1,sbCanvas.height);
-  const ortho = 45;
+  const aspect = (sbCanvas.clientWidth||800) / Math.max(1, sbCanvas.clientHeight||600);
+  const ortho = 48;
   sbEditorCam.orthoLeft=-ortho*aspect; sbEditorCam.orthoRight=ortho*aspect;
   sbEditorCam.orthoTop=ortho; sbEditorCam.orthoBottom=-ortho;
-  sbEditorCam.lowerRadiusLimit=40; sbEditorCam.upperRadiusLimit=120;
+  sbEditorCam.lowerRadiusLimit=30; sbEditorCam.upperRadiusLimit=140;
+  sbEditorCam.panningSensibility = 40;
   sbEditorCam.attachControl(sbCanvas, true);
+  // middle/right pan, wheel zoom — left click for tools
+  sbEditorCam.inputs.attached.pointers.buttons = [1, 2];
   sbScene.activeCamera = sbEditorCam;
+  sbEditorSetTool('place');
 
   if(!sbScene._editorPick){
     sbScene._editorPick = true;
+
     sbScene.onPointerObservable.add((pi)=>{
       if(!sbEditorMode) return;
-      if(pi.type !== BABYLON.PointerEventTypes.POINTERPICK) return;
+
+      // pointer move while dragging
+      if(pi.type === BABYLON.PointerEventTypes.POINTERMOVE && sbDrag){
+        const pick = sbScene.pick(sbScene.pointerX, sbScene.pointerY, m=> m && m.name==='ground');
+        if(!pick || !pick.hit || !pick.pickedPoint) return;
+        const mesh = sbDrag.mesh;
+        if(sbDrag.mode==='move'){
+          const x=Math.round(pick.pickedPoint.x*2)/2;
+          const z=Math.round(pick.pickedPoint.z*2)/2;
+          mesh.position.x = x;
+          mesh.position.z = z;
+          if(mesh.metadata && mesh.metadata.data){
+            mesh.metadata.data.x = x;
+            mesh.metadata.data.z = z;
+            mesh.metadata.data.y = mesh.position.y;
+          }
+          if(mesh.metadata && mesh.metadata.spawn){
+            mesh.metadata.x = x; mesh.metadata.z = z;
+          }
+        } else if(sbDrag.mode==='rotate'){
+          const dx = pick.pickedPoint.x - mesh.position.x;
+          const dz = pick.pickedPoint.z - mesh.position.z;
+          const ang = Math.atan2(dx, dz);
+          mesh.rotation.y = ang;
+          if(mesh.metadata && mesh.metadata.data) mesh.metadata.data.rotY = ang;
+        }
+        return;
+      }
+
+      if(pi.type === BABYLON.PointerEventTypes.POINTERUP){
+        if(sbDrag){
+          // sync spawns array positions
+          if(sbDrag.mesh && sbDrag.mesh.metadata && sbDrag.mesh.metadata.spawn){
+            const meta = sbDrag.mesh.metadata;
+            const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+            const key = meta.team==='CT'?'spawnsCT':'spawnsT';
+            pack[key] = pack[key].map(s=>{
+              if(Math.abs(s.x-sbDrag.originX)<0.01 && Math.abs(s.z-sbDrag.originZ)<0.01) return {x:meta.x,z:meta.z};
+              return s;
+            });
+            sbMapCustomCache[sbCurrentMap]=pack;
+          }
+          sbDrag = null;
+          const wrap = document.getElementById('sbCanvasWrap');
+          if(wrap) wrap.style.cursor = sbEditorTool==='move'||sbEditorTool==='rotate' ? 'grab' : 'crosshair';
+        }
+        return;
+      }
+
+      if(pi.type !== BABYLON.PointerEventTypes.POINTERDOWN) return;
+      // only left button
+      if(pi.event && pi.event.button !== 0) return;
+
       const pick = pi.pickInfo; if(!pick||!pick.hit) return;
-      // delete custom
-      if(pick.pickedMesh && pick.pickedMesh.metadata && pick.pickedMesh.metadata.custom){
-        const data = pick.pickedMesh.metadata.data;
-        const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-        pack.boxes = pack.boxes.filter(b=> !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
-        sbMapCustomCache[sbCurrentMap]=pack;
-        pick.pickedMesh.dispose();
+      const mesh = pick.pickedMesh;
+
+      // DELETE tool
+      if(sbEditorTool==='delete'){
+        if(mesh && mesh.metadata && mesh.metadata.custom){
+          const data = mesh.metadata.data;
+          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+          pack.boxes = pack.boxes.filter(b=> !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
+          sbMapCustomCache[sbCurrentMap]=pack;
+          mesh.dispose();
+        } else if(mesh && mesh.metadata && mesh.metadata.spawn){
+          const meta = mesh.metadata;
+          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
+          const key = meta.team==='CT'?'spawnsCT':'spawnsT';
+          pack[key] = pack[key].filter(s=> !(s.x===meta.x && s.z===meta.z));
+          sbMapCustomCache[sbCurrentMap]=pack;
+          mesh.dispose();
+        }
         return;
       }
-      if(pick.pickedMesh && pick.pickedMesh.metadata && pick.pickedMesh.metadata.spawn){
-        const meta = pick.pickedMesh.metadata;
-        const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-        const key = meta.team==='CT'?'spawnsCT':'spawnsT';
-        pack[key] = pack[key].filter(s=> !(s.x===meta.x && s.z===meta.z));
-        sbMapCustomCache[sbCurrentMap]=pack;
-        pick.pickedMesh.dispose();
+
+      // MOVE / ROTATE start drag on custom or spawn
+      if(sbEditorTool==='move' || sbEditorTool==='rotate'){
+        if(mesh && ((mesh.metadata && mesh.metadata.custom) || (mesh.metadata && mesh.metadata.spawn))){
+          sbDrag = {
+            mesh,
+            mode: sbEditorTool,
+            originX: mesh.position.x,
+            originZ: mesh.position.z
+          };
+          const wrap = document.getElementById('sbCanvasWrap');
+          if(wrap) wrap.style.cursor = 'grabbing';
+          // disable camera pan while dragging
+          if(sbEditorCam) sbEditorCam.detachControl();
+          setTimeout(()=>{ /* reattach on up */ }, 0);
+        }
         return;
       }
-      if(pick.pickedMesh && pick.pickedMesh.name==='ground'){
+
+      // PLACE / SPAWN on ground
+      if(mesh && mesh.name==='ground'){
         const p = pick.pickedPoint;
         const x=Math.round(p.x*2)/2, z=Math.round(p.z*2)/2;
         if(sbEditorTool==='spawn_t' || sbEditorTool==='spawn_ct'){
@@ -4377,9 +4483,16 @@ function sbEnterEditor(){
           pack[key].push({x,z});
           sbMapCustomCache[sbCurrentMap]=pack;
           sbSpawnMarker(sbScene, x, z, team);
-        } else {
+        } else if(sbEditorTool==='place'){
           sbEditorAddBoxAt(x, z);
         }
+      }
+    });
+
+    // reattach camera after drag
+    window.addEventListener('pointerup', ()=>{
+      if(sbEditorMode && sbEditorCam && sbGameActive===false){
+        try{ sbEditorCam.attachControl(sbCanvas, true); if(sbEditorCam.inputs?.attached?.pointers) sbEditorCam.inputs.attached.pointers.buttons=[1,2]; }catch(e){}
       }
     });
   }
@@ -4427,8 +4540,11 @@ async function sbEditorSave(){
 }
 function sbEditorExit(){
   sbEditorMode=false;
+  sbDrag=null;
   document.getElementById('sbEditorBar')?.classList.remove('show');
   document.getElementById('sbMainMenu')?.classList.remove('hidden');
+  const wrap=document.getElementById('sbCanvasWrap');
+  if(wrap){ wrap.classList.remove('editor-mode'); wrap.style.cursor=''; }
   if(sbEditorCam){ sbEditorCam.dispose(); sbEditorCam=null; }
   if(sbPlayer && sbPlayer.camera) sbScene.activeCamera = sbPlayer.camera;
 }
