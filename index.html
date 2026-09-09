@@ -4333,8 +4333,10 @@ function sbMapSpawns(map, team){
   if(map==='inferno'){
     return team==='CT' ? [[-16,18,3.14],[16,16,3.14],[0,20,3.14]] : [[-18,-22,0.3],[18,-20,-0.4],[0,-26,0]];
   }
-  // dust
-  return team==='CT' ? [[-14,18,3.14],[14,16,3.14],[0,22,3.14]] : [[-16,-24,0.4],[16,-22,-0.3],[0,-26,0]];
+  // dust II — CT near +Z (under catwalk/CT spawn), T at -Z plateau
+  return team==='CT'
+    ? [[-4, 30, Math.PI],[4, 30, Math.PI],[0, 32, Math.PI],[-8, 28, Math.PI],[8, 28, Math.PI]]
+    : [[-4, -32, 0],[4, -32, 0],[0, -34, 0],[-8, -30, 0],[8, -30, 0]];
 }
 
 function sbCreateMap(scene, mapId){
@@ -4383,18 +4385,99 @@ function sbCreateMap(scene, mapId){
     sbBox(scene,-20,1,0,4,2,8,[0.34,0.28,0.24]);
     sbBox(scene,20,1,2,4,2,8,[0.34,0.28,0.24]);
   } else {
-    gmat.diffuseColor=new BABYLON.Color3(0.40,0.36,0.26); ground.material=gmat;
-    sbBox(scene,-18,1.5,8,6,3,16,[0.5,0.42,0.28]);
-    sbBox(scene,16,1.5,10,8,3,10,[0.48,0.4,0.26]);
-    sbBox(scene,0,1.2,2,5,2.4,12,[0.4,0.35,0.26]);
-    sbBox(scene,-6,1,-12,10,2,4,[0.44,0.38,0.28]);
-    sbBox(scene,8,1.5,-8,4,3,6,[0.42,0.36,0.26]);
-    sbBox(scene,0,2,20,8,4,5,[0.48,0.4,0.26]);
-    sbBox(scene,-22,1,-4,4,2,8,[0.4,0.36,0.28]);
-    sbBox(scene,22,1.2,-2,4,2.4,6,[0.4,0.36,0.28]);
-    sbBox(scene,-3,0.6,8,2.2,1.2,2.2,[0.36,0.32,0.24]);
-    sbBox(scene,4,0.6,6,2.2,1.2,2.2,[0.36,0.32,0.24]);
-    sbBox(scene,0,0.5,-20,6,1,3,[0.42,0.38,0.28]);
+    // Dust II layout (inspired by CB/CS zone names — original low-poly geometry)
+    // Axes: +Z = CT side, -Z = T side; +X = Long/A, -X = B/Tunnels
+    gmat.diffuseColor=new BABYLON.Color3(0.48,0.40,0.28); ground.material=gmat;
+    const sand=[0.55,0.45,0.30], wallS=[0.42,0.36,0.26], boxC=[0.50,0.42,0.28];
+    const dark=[0.32,0.28,0.22], midC=[0.45,0.38,0.27], blue=[0.25,0.35,0.55];
+
+    // --- T SPAWN (south, -Z) elevated plateau ---
+    sbBox(scene, 0, 0.4, -32, 22, 0.8, 12, sand); // plateau
+    sbBox(scene, 0, 1.2, -38, 18, 2.4, 2, wallS); // back wall
+    sbBox(scene,-10, 1.0, -32, 2, 2, 8, wallS);
+    sbBox(scene, 10, 1.0, -32, 2, 2, 8, wallS);
+
+    // --- LONG A (east corridor, +X, from T to A) ---
+    sbBox(scene, 22, 1.5, -18, 2.5, 3, 20, wallS); // long outer wall
+    sbBox(scene, 14, 1.5, -18, 2.5, 3, 14, wallS); // long inner
+    // long doors (gap around z=-26)
+    sbBox(scene, 18, 1.8, -28, 8, 3.6, 1.5, wallS);
+    sbBox(scene, 14, 1.0, -28, 1.2, 2, 1.2, wallS);
+    sbBox(scene, 22, 1.0, -28, 1.2, 2, 1.2, wallS);
+    // blue container / cover on long
+    sbBox(scene, 18, 1.0, -12, 3.5, 2.0, 2.5, blue);
+    // long pit (lower cover near CT end of long)
+    sbBox(scene, 18, 0.35, 2, 5, 0.7, 4, dark);
+    sbBox(scene, 16, 1.2, 6, 1.5, 2.4, 3, wallS);
+
+    // --- A SITE (NE) two levels + boxes ---
+    sbBox(scene, 16, 0.5, 18, 14, 1.0, 12, sand); // A platform
+    sbBox(scene, 16, 1.6, 24, 12, 2.2, 2, wallS); // A back
+    sbBox(scene, 22, 1.4, 16, 2, 2.8, 10, wallS);
+    // A site boxes (cover)
+    sbBox(scene, 14, 1.0, 16, 2.5, 2.0, 2.5, boxC);
+    sbBox(scene, 18, 0.9, 14, 2.2, 1.8, 2.2, boxC);
+    sbBox(scene, 12, 1.1, 20, 2, 2.2, 2, boxC);
+    // goose / car-like low cover
+    sbBox(scene, 20, 0.6, 12, 3, 1.2, 1.5, [0.4,0.15,0.12]);
+
+    // --- SHORT / CATWALK (from mid to A) ---
+    sbBox(scene, 6, 1.6, 8, 8, 0.5, 3, midC); // catwalk floor elevated
+    sbBox(scene, 6, 2.4, 6, 8, 1.6, 1.2, wallS); // rail
+    sbBox(scene, 10, 1.2, 12, 2, 2.4, 4, wallS); // stairs side to A
+    // steps toward A
+    sbBox(scene, 12, 0.9, 14, 3, 0.6, 2, midC);
+    sbBox(scene, 13, 1.3, 16, 3, 0.6, 2, midC);
+
+    // --- MID (center, Z axis) ---
+    // mid doors structure near CT
+    sbBox(scene, -3, 2.0, 10, 1.5, 4, 4, wallS);
+    sbBox(scene,  3, 2.0, 10, 1.5, 4, 4, wallS);
+    sbBox(scene,  0, 3.2, 10, 8, 1.2, 1.5, wallS); // top of mid doors
+    // suicide slope blocks (sides of mid)
+    sbBox(scene, -6, 1.0, -8, 2, 2, 16, wallS);
+    sbBox(scene,  6, 1.0, -4, 2, 2, 10, wallS);
+    // mid cover Xbox-like
+    sbBox(scene, 0, 0.7, -6, 2.5, 1.4, 2.5, boxC);
+    sbBox(scene, -2, 0.6, 4, 2, 1.2, 2, boxC);
+
+    // --- CT SPAWN (north +Z, under catwalk roof feel) ---
+    sbBox(scene, 0, 0.3, 30, 20, 0.6, 10, sand);
+    sbBox(scene, 0, 2.5, 36, 16, 1.2, 2, wallS); // roof slab
+    sbBox(scene,-8, 1.5, 32, 2, 3, 8, wallS);
+    sbBox(scene, 8, 1.5, 32, 2, 3, 8, wallS);
+    sbBox(scene, 0, 1.8, 36, 18, 3.6, 1.5, wallS); // back
+
+    // --- B SITE (NW, -X +Z) lots of boxes ---
+    sbBox(scene,-18, 0.5, 16, 12, 1.0, 12, sand);
+    sbBox(scene,-22, 1.8, 20, 2, 3.6, 14, wallS); // B outer
+    sbBox(scene,-14, 1.6, 24, 10, 3.2, 2, wallS); // B back
+    // B boxes / window structure
+    sbBox(scene,-16, 1.2, 14, 2.5, 2.4, 2.5, boxC);
+    sbBox(scene,-20, 1.0, 12, 2.2, 2.0, 2.2, boxC);
+    sbBox(scene,-15, 0.9, 18, 2, 1.8, 2, boxC);
+    sbBox(scene,-19, 1.4, 18, 3, 2.8, 1.5, wallS); // window wall
+    sbBox(scene,-12, 1.2, 12, 2, 2.4, 3, wallS); // door to mid
+
+    // --- TUNNELS (Upper/Lower B) west side, roofed ---
+    // lower tunnels near mid
+    sbBox(scene,-12, 2.2, -2, 10, 1.2, 8, dark); // roof
+    sbBox(scene,-16, 1.0, -2, 1.5, 2, 8, wallS);
+    sbBox(scene, -8, 1.0, -2, 1.5, 2, 8, wallS);
+    sbBox(scene,-12, 0.3, -2, 8, 0.6, 8, dark); // floor
+    // upper toward B
+    sbBox(scene,-14, 2.4, 6, 8, 1.2, 6, dark); // roof upper
+    sbBox(scene,-18, 1.2, 6, 1.5, 2.4, 6, wallS);
+    sbBox(scene,-10, 1.2, 6, 1.5, 2.4, 6, wallS);
+    // spiral-ish step up
+    sbBox(scene,-14, 0.8, 2, 4, 0.5, 3, midC);
+    sbBox(scene,-14, 1.3, 4, 4, 0.5, 2, midC);
+    // tunnel exit to B (tight)
+    sbBox(scene,-16, 1.2, 10, 3, 2.4, 2, wallS);
+
+    // --- Outside long / top mid connector walls ---
+    sbBox(scene, 10, 1.2, -24, 4, 2.4, 4, wallS);
+    sbBox(scene, -8, 1.0, -20, 4, 2, 6, wallS);
   }
 }
 
