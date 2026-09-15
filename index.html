@@ -3977,6 +3977,91 @@ function sbClosestOnAABB(px, py, pz, s){
   };
 }
 
+/** Ray vs AABB solids. Returns {hit, dist, x,y,z} — first wall hit or miss at maxDist */
+function sbRayWorld(ox, oy, oz, dx, dy, dz, maxDist, solids){
+  solids = solids || sbCollectSolids();
+  const len = Math.hypot(dx,dy,dz) || 1;
+  dx/=len; dy/=len; dz/=len;
+  let best = maxDist;
+  let hx=ox+dx*maxDist, hy=oy+dy*maxDist, hz=oz+dz*maxDist;
+  let hit=false;
+  for(let i=0;i<solids.length;i++){
+    const s=solids[i];
+    // slab method
+    let tmin=0, tmax=best;
+    // X
+    if(Math.abs(dx)<1e-8){ if(ox<s.minX||ox>s.maxX) continue; }
+    else {
+      let t1=(s.minX-ox)/dx, t2=(s.maxX-ox)/dx;
+      if(t1>t2){ const t=t1;t1=t2;t2=t; }
+      tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+      if(tmin>tmax) continue;
+    }
+    // Y
+    if(Math.abs(dy)<1e-8){ if(oy<s.minY||oy>s.maxY) continue; }
+    else {
+      let t1=(s.minY-oy)/dy, t2=(s.maxY-oy)/dy;
+      if(t1>t2){ const t=t1;t1=t2;t2=t; }
+      tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+      if(tmin>tmax) continue;
+    }
+    // Z
+    if(Math.abs(dz)<1e-8){ if(oz<s.minZ||oz>s.maxZ) continue; }
+    else {
+      let t1=(s.minZ-oz)/dz, t2=(s.maxZ-oz)/dz;
+      if(t1>t2){ const t=t1;t1=t2;t2=t; }
+      tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+      if(tmin>tmax) continue;
+    }
+    if(tmin>0.05 && tmin<best){
+      best=tmin; hit=true;
+      hx=ox+dx*best; hy=oy+dy*best; hz=oz+dz*best;
+    }
+  }
+  return { hit, dist:best, x:hx, y:hy, z:hz };
+}
+
+/** Line-of-sight: true if no wall between a and b (with small slack) */
+function sbHasLOS(ax,ay,az, bx,by,bz, solids){
+  const dx=bx-ax, dy=by-ay, dz=bz-az;
+  const dist=Math.hypot(dx,dy,dz);
+  if(dist<0.2) return true;
+  const r=sbRayWorld(ax,ay,az, dx,dy,dz, dist, solids);
+  return !r.hit || r.dist >= dist - 0.35;
+}
+
+/** Visual bullet tracer (fades out) */
+function sbSpawnTracer(ox,oy,oz, ex,ey,ez, color){
+  if(!sbScene) return;
+  const pts=[new BABYLON.Vector3(ox,oy,oz), new BABYLON.Vector3(ex,ey,ez)];
+  const line=BABYLON.MeshBuilder.CreateLines('tr',{points:pts, updatable:false}, sbScene);
+  line.color = color || new BABYLON.Color3(1, 0.85, 0.35);
+  line.isPickable=false;
+  // thin glow tube for visibility
+  const dx=ex-ox, dy=ey-oy, dz=ez-oz;
+  const len=Math.hypot(dx,dy,dz)||0.01;
+  const tube=BABYLON.MeshBuilder.CreateCylinder('trb',{height:len, diameter:0.035, tessellation:4}, sbScene);
+  tube.position.set((ox+ex)/2, (oy+ey)/2, (oz+ez)/2);
+  // orient tube along direction
+  const up=new BABYLON.Vector3(0,1,0);
+  const dir=new BABYLON.Vector3(dx/len, dy/len, dz/len);
+  const axis=BABYLON.Vector3.Cross(up, dir);
+  const axisLen=axis.length();
+  if(axisLen>1e-4){
+    const ang=Math.acos(Math.max(-1,Math.min(1,BABYLON.Vector3.Dot(up,dir))));
+    tube.rotate(axis.normalize(), ang, BABYLON.Space.WORLD);
+  } else if(dir.y<0){
+    tube.rotate(BABYLON.Axis.X, Math.PI, BABYLON.Space.WORLD);
+  }
+  const mat=new BABYLON.StandardMaterial('trm'+Math.random(), sbScene);
+  mat.emissiveColor=color||new BABYLON.Color3(1,0.75,0.2);
+  mat.diffuseColor=new BABYLON.Color3(0.2,0.15,0.05);
+  mat.disableLighting=true;
+  tube.material=mat; tube.isPickable=false;
+  setTimeout(()=>{ try{ line.dispose(); tube.dispose(); mat.dispose(); }catch(e){} }, 70);
+}
+
+
 /**
  * Resolve capsule (vertical) against AABB solids.
  * pos = feet position (bottom of capsule), height = full capsule height, radius = capsule radius
@@ -4161,11 +4246,22 @@ class SBBot {
       this.root.position.y = mv.y + Math.abs(Math.sin(this.animT))*0.04;
       this.root.rotation.y=Math.atan2(this.targetDir.x,this.targetDir.z);
     }
-    if(dist<16&&dist>3&&this.shootCooldown<=0){
+    if(dist<18&&dist>2.5&&this.shootCooldown<=0){
       const face=new BABYLON.Vector3(Math.sin(this.root.rotation.y),0,Math.cos(this.root.rotation.y));
-      if(BABYLON.Vector3.Dot(face,toPlayer.normalize())>0.7){
-        this.shootCooldown=1.4+Math.random()*1.2;
-        if(sbPlayer&&sbPlayer.isAlive) sbPlayer.takeDamage(6+Math.floor(Math.random()*6));
+      if(BABYLON.Vector3.Dot(face,toPlayer.normalize())>0.55){
+        // head/chest height LOS — cannot shoot through walls
+        const ox=this.root.position.x, oy=this.root.position.y+1.45, oz=this.root.position.z;
+        const px=playerPos.x, py=playerPos.y, pz=playerPos.z;
+        if(sbHasLOS(ox,oy,oz, px,py,pz)){
+          this.shootCooldown=1.5+Math.random()*1.3;
+          // tracer from bot to player
+          sbSpawnTracer(ox,oy,oz, px,py,pz, new BABYLON.Color3(1,0.4,0.25));
+          if(sbPlayer&&sbPlayer.isAlive) sbPlayer.takeDamage(5+Math.floor(Math.random()*5));
+          SBAudio.shoot('ak47');
+        } else {
+          // saw player angle but wall blocks — retry sooner
+          this.shootCooldown=0.35+Math.random()*0.4;
+        }
       }
     }
   }
@@ -4361,14 +4457,27 @@ class SBPlayer {
     const origin=this.camera.position.clone();
     const dir=this.camera.getDirection(BABYLON.Vector3.Forward());
     if(this.weapon.type!=='melee'){ dir.x+=(Math.random()-0.5)*spread; dir.y+=(Math.random()-0.5)*spread; dir.z+=(Math.random()-0.5)*spread; dir.normalize(); }
-    const ray=new BABYLON.Ray(origin,dir,range);
-    // bots
+    const solids=sbCollectSolids();
+    // wall hit distance first — bullets stop on walls
+    const wall=sbRayWorld(origin.x,origin.y,origin.z, dir.x,dir.y,dir.z, range, solids);
+    let maxR = wall.hit ? wall.dist : range;
+    // tracer end point
+    let ex=origin.x+dir.x*maxR, ey=origin.y+dir.y*maxR, ez=origin.z+dir.z*maxR;
+    if(this.weapon.type!=='melee'){
+      sbSpawnTracer(origin.x, origin.y, origin.z, ex, ey, ez, new BABYLON.Color3(1, 0.9, 0.45));
+    }
+    const ray=new BABYLON.Ray(origin,dir,maxR);
+    // bots (only if closer than wall)
     const hit=this.scene.pickWithRay(ray, m=> m.name==='torso'||m.name==='botHead'||m.name==='armL'||m.name==='armR');
-    if(hit&&hit.hit&&hit.pickedMesh){
+    if(hit&&hit.hit&&hit.pickedMesh && hit.distance<=maxR+0.05){
       const isHead=hit.pickedMesh.name==='botHead';
       for(const bot of sbBots){
         if(!bot.alive) continue;
         if(bot.parts.includes(hit.pickedMesh)||hit.pickedMesh===bot.head){
+          // double-check LOS to bot chest
+          const bx=bot.root.position.x, by=bot.root.position.y+1.2, bz=bot.root.position.z;
+          if(!sbHasLOS(origin.x,origin.y,origin.z, bx,by,bz, solids)) return;
+          sbSpawnTracer(origin.x,origin.y,origin.z, bx,by+(isHead?0.4:0),bz, new BABYLON.Color3(1,0.5,0.2));
           const killed=bot.takeDamage(damage,isHead);
           if(killed){ this.kills++; const reward=isHead?450:300; this.money+=reward; SBAudio.kill(); this.pushKillfeed(isHead?'Headshot +$'+reward:'Kill +$'+reward); }
           return;
@@ -4522,10 +4631,10 @@ function sbMapSpawns(map, team){
   if(map==='inferno'){
     return team==='CT' ? [[-16,18,3.14],[16,16,3.14],[0,20,3.14]] : [[-18,-22,0.3],[18,-20,-0.4],[0,-26,0]];
   }
-  // dust II — T bottom, CT top
+  // dust II — T south (-Z), CT north (+Z)
   return team==='CT'
-    ? [[-6, 33, Math.PI],[0, 34, Math.PI],[6, 33, Math.PI],[-3, 31, Math.PI],[3, 31, Math.PI]]
-    : [[-6, -32, 0],[0, -33, 0],[6, -32, 0],[-3, -30, 0],[3, -30, 0]];
+    ? [[-6, 36, Math.PI],[0, 37, Math.PI],[6, 36, Math.PI],[-3, 34, Math.PI],[3, 34, Math.PI]]
+    : [[-6, -34, 0],[0, -35, 0],[6, -34, 0],[-3, -32, 0],[3, -32, 0]];
 }
 
 function sbCreateMap(scene, mapId){
@@ -4574,151 +4683,147 @@ function sbCreateMap(scene, mapId){
     sbBox(scene,-20,1,0,4,2,8,[0.34,0.28,0.24]);
     sbBox(scene,20,1,2,4,2,8,[0.34,0.28,0.24]);
   } else {
-    // ========== DUST II (classic silhouette, original low-poly layout) ==========
-    // Coord: T spawn -Z bottom, CT +Z top, Long/A +X right, B/tunnels -X left
-    gmat.diffuseColor = new BABYLON.Color3(0.58, 0.48, 0.32);
+    // ========== DUST II — classic silhouette (original low-poly, not Valve BSP) ==========
+    // Layout (top-down): T south (-Z), CT north (+Z), Long/A east (+X), B/tunnels west (-X)
+    gmat.diffuseColor = new BABYLON.Color3(0.55, 0.46, 0.30);
     ground.material = gmat;
-    const W  = [0.48, 0.40, 0.30];   // sandstone wall
-    const B  = [0.55, 0.48, 0.36];   // boxes
-    const D  = [0.32, 0.28, 0.22];   // dark tunnel
-    const BL = [0.25, 0.38, 0.58];   // blue container
-    const R  = [0.52, 0.22, 0.16];   // red crate
-    const G  = [0.42, 0.50, 0.28];   // green accent
-    const FL = [0.50, 0.42, 0.30];   // floor ramp
+    const W  = [0.50, 0.42, 0.30];
+    const B  = [0.58, 0.50, 0.38];
+    const D  = [0.28, 0.24, 0.18];
+    const BL = [0.22, 0.36, 0.55];
+    const R  = [0.55, 0.20, 0.14];
+    const G  = [0.38, 0.48, 0.26];
+    const FL = [0.48, 0.40, 0.28];
+    const RD = [0.42, 0.36, 0.28]; // road / path slightly darker
 
     function wall(x,z,w,d,h,y){ sbBox(scene,x,(y==null?h/2:y),z,w,h,d,W); }
     function box(x,z,w,d,h,col){ sbBox(scene,x,h/2,z,w,h,d,col||B); }
-    // thin "door frame" pillars (gap = walkable door)
-    function door(x,z,facing){ // facing 0=along Z opening, 1=along X opening
-      if(facing===1){ wall(x-2.2,z,1.2,2.5,4.2); wall(x+2.2,z,1.2,2.5,4.2); sbBox(scene,x,4.0,z,5.6,0.6,2.2,W); }
-      else { wall(x,z-2.2,2.5,1.2,4.2); wall(x,z+2.2,2.5,1.2,4.2); sbBox(scene,x,4.0,z,2.2,0.6,5.6,W); }
+    function doorX(x,z){ // opening along X (walk through on X)
+      wall(x, z-2.6, 2.2, 1.4, 4.5);
+      wall(x, z+2.6, 2.2, 1.4, 4.5);
+      sbBox(scene, x, 4.3, z, 2.4, 0.7, 6.6, W);
     }
+    function doorZ(x,z){ // opening along Z
+      wall(x-2.6, z, 1.4, 2.2, 4.5);
+      wall(x+2.6, z, 1.4, 2.2, 4.5);
+      sbBox(scene, x, 4.3, z, 6.6, 0.7, 2.4, W);
+    }
+    // road strip (visual only, flat)
+    function road(x,z,w,d){ sbBox(scene,x,0.06,z,w,0.12,d,RD); }
 
-    // ========== T SPAWN (bottom / -Z) ==========
-    wall(0, -38, 30, 2, 4.5);           // T back wall
-    wall(-15, -32, 2, 14, 4);            // T left
-    wall(15, -32, 2, 14, 4);             // T right
-    // T yard boxes
-    box(-6, -30, 2.2, 2.2, 1.6);
-    box(6, -28, 2.0, 2.0, 1.4);
-    // ramp out of T toward mid/long
-    sbBox(scene, 0, 0.3, -26, 12, 0.6, 5, FL);
-    sbBox(scene, 0, 0.55, -22, 10, 0.5, 4, FL);
+    // ===== T SPAWN (south) =====
+    wall(0, -40, 32, 2.5, 5);
+    wall(-16, -33, 2.2, 16, 4.5);
+    wall(16, -33, 2.2, 16, 4.5);
+    box(-7, -32, 2.4, 2.4, 1.7);
+    box(7, -30, 2.2, 2.2, 1.5);
+    // ramp T -> outside
+    sbBox(scene, 0, 0.28, -27, 14, 0.55, 6, FL);
+    sbBox(scene, 0, 0.5, -22, 12, 0.45, 5, FL);
+    road(0, -24, 10, 18);
 
-    // ========== LONG DOORS (T -> Long) ==========
-    door(14, -22, 1);                   // double-doors feel
-    wall(8, -22, 4, 2, 4);
-    wall(20, -22, 4, 2, 4);
+    // ===== LONG DOORS (T right) =====
+    doorZ(14, -20);
+    wall(7, -20, 5, 2.2, 4.5);
+    wall(21, -20, 5, 2.2, 4.5);
 
-    // ========== LONG A corridor (right side) ==========
-    // outer (far right) wall runs most of long
-    wall(28, -2, 2.2, 48, 5);
-    // inner wall (toward mid)
-    wall(11, -4, 2.0, 36, 4.2);
-    // long path open ~x 13..27, z -20..14
-    box(20, -12, 3.4, 2.6, 2.3, BL);    // blue dumpster mid-long
-    box(16, -6, 2.4, 2.4, 1.7, B);
-    box(22, -2, 2.2, 2.2, 1.5, R);
-    // pit before A (lower floor visual)
-    sbBox(scene, 20, 0.2, 4, 8, 0.4, 6, D);
-    wall(24, 2, 1.5, 6, 2.2);
-    // long corner into A
-    wall(22, 12, 10, 2, 4.5);
+    // ===== LONG A (east corridor) =====
+    wall(30, -4, 2.5, 52, 5.5);          // outer long wall
+    wall(10, -2, 2.2, 40, 4.5);           // inner long wall
+    road(20, -2, 8, 40);
+    box(21, -14, 3.6, 2.8, 2.4, BL);      // blue container
+    box(17, -8, 2.5, 2.5, 1.8);
+    box(24, -4, 2.3, 2.3, 1.6, R);
+    // pit
+    sbBox(scene, 21, 0.18, 4, 9, 0.36, 7, D);
+    wall(26, 2, 1.6, 7, 2.4);
+    // long corner to A
+    wall(24, 14, 12, 2.2, 5);
 
-    // ========== A SITE (top-right) ==========
-    wall(28, 24, 2.2, 20, 5);            // A outer right
-    wall(16, 34, 24, 2, 4.5);            // A back toward CT
-    wall(6, 26, 2, 12, 4);               // A toward short/mid
-    // classic A site stack
-    box(18, 20, 2.8, 2.8, 2.3);
-    box(22, 18, 2.5, 2.5, 1.9);
-    box(16, 24, 2.4, 2.4, 2.5);
-    box(20, 24, 3.2, 2.2, 1.7);
-    box(24, 22, 2.0, 2.0, 1.6, R);
-    box(14, 28, 2.2, 2.2, 2.0, G);
-    // A default plant zone marker (flat)
-    sbBox(scene, 19, 0.08, 22, 5, 0.16, 5, [0.45,0.38,0.28]);
+    // ===== A SITE (NE) =====
+    wall(30, 26, 2.5, 22, 5.5);
+    wall(16, 36, 28, 2.5, 5);
+    wall(5, 28, 2.2, 14, 4.5);
+    box(19, 22, 3.0, 3.0, 2.4);
+    box(24, 20, 2.6, 2.6, 2.0);
+    box(17, 26, 2.5, 2.5, 2.6);
+    box(22, 26, 3.4, 2.3, 1.8);
+    box(26, 24, 2.1, 2.1, 1.7, R);
+    box(14, 30, 2.3, 2.3, 2.1, G);
+    sbBox(scene, 20, 0.07, 24, 6, 0.14, 6, [0.40,0.34,0.24]); // plant pad
+    road(18, 22, 10, 12);
 
-    // ========== SHORT / CAT (elevated path T-mid -> A) ==========
-    // elevated deck
-    sbBox(scene, 5, 1.6, 8, 12, 0.35, 5, W);
-    wall(5, 6, 12, 1.0, 2.4);            // outer rail
-    wall(0, 9, 1.2, 5, 3.2);
-    // stairs short -> A
-    sbBox(scene, 10, 0.55, 14, 5, 1.1, 3.5, W);
-    sbBox(scene, 12, 1.15, 17, 5, 1.1, 3.2, W);
-    sbBox(scene, 13, 1.7, 20, 4.5, 1.0, 2.5, W);
-    // short cover
-    box(4, 12, 2.0, 2.0, 1.5);
+    // ===== SHORT / CAT =====
+    sbBox(scene, 4, 1.7, 8, 14, 0.4, 6, W);
+    wall(4, 5.5, 14, 1.2, 2.6);
+    wall(-1, 9, 1.4, 6, 3.4);
+    sbBox(scene, 10, 0.6, 15, 5.5, 1.2, 4, W);
+    sbBox(scene, 12, 1.25, 18, 5.5, 1.2, 3.5, W);
+    sbBox(scene, 13, 1.85, 21, 5, 1.1, 2.8, W);
+    box(3, 12, 2.2, 2.2, 1.6);
 
-    // ========== MID (center spine) ==========
-    wall(-6, -2, 1.8, 32, 3.8);          // mid left
-    wall(6, 0, 1.8, 28, 3.8);            // mid right
-    // mid doors (iconic)
-    door(0, 14, 0);
-    wall(-5, 14, 2, 2.5, 5);
-    wall(5, 14, 2, 2.5, 5);
-    // xbox
-    box(0, -10, 2.8, 2.8, 1.7);
-    box(0, 2, 2.3, 2.3, 1.5);
-    box(0, 8, 2.0, 2.0, 1.3);
+    // ===== MID =====
+    wall(-7, 0, 2.0, 36, 4.2);
+    wall(7, 2, 2.0, 32, 4.2);
+    road(0, 0, 6, 36);
+    doorX(0, 15);                         // mid doors
+    box(0, -12, 3.0, 3.0, 1.8);           // xbox
+    box(0, 2, 2.4, 2.4, 1.6);
+    box(0, 9, 2.1, 2.1, 1.4);
 
-    // ========== CT SPAWN (top center / +Z) ==========
-    wall(0, 40, 28, 2, 4.5);             // CT back
-    wall(-14, 34, 2, 12, 4);
-    wall(14, 34, 2, 12, 4);
-    sbBox(scene, 0, 3.6, 36, 20, 0.5, 10, W); // CT roof
-    box(-4, 32, 2.0, 2.0, 1.4);
-    box(4, 31, 2.0, 2.0, 1.4);
+    // ===== CT SPAWN (north) =====
+    wall(0, 42, 30, 2.5, 5);
+    wall(-15, 36, 2.2, 14, 4.5);
+    wall(15, 36, 2.2, 14, 4.5);
+    sbBox(scene, 0, 3.8, 38, 22, 0.55, 12, W);
+    box(-5, 34, 2.2, 2.2, 1.5);
+    box(5, 33, 2.2, 2.2, 1.5);
+    road(0, 34, 12, 10);
 
-    // ========== B SITE (top-left) ==========
-    wall(-28, 18, 2.2, 24, 5);           // B outer left
-    wall(-16, 32, 20, 2, 4.5);           // B back
-    // B site stack (dense)
-    box(-20, 16, 2.7, 2.7, 2.3);
-    box(-24, 14, 2.5, 2.5, 2.0);
-    box(-18, 20, 2.4, 2.4, 2.1);
-    box(-22, 20, 3.0, 2.2, 1.8);
-    box(-20, 24, 2.2, 2.2, 2.4);
-    box(-16, 26, 2.0, 2.0, 1.6, R);
-    sbBox(scene, -20, 0.08, 20, 5, 0.16, 5, [0.45,0.38,0.28]); // plant
-    // B window wall toward mid/topmid
-    wall(-12, 18, 2, 10, 4.5);
-    // dark "window" band (still solid, visual only)
-    sbBox(scene, -12, 2.6, 18, 2.4, 1.6, 4, D);
+    // ===== B SITE (NW) =====
+    wall(-30, 18, 2.5, 26, 5.5);
+    wall(-16, 34, 24, 2.5, 5);
+    box(-21, 18, 2.9, 2.9, 2.4);
+    box(-25, 15, 2.6, 2.6, 2.1);
+    box(-18, 22, 2.5, 2.5, 2.2);
+    box(-23, 22, 3.2, 2.3, 1.9);
+    box(-21, 26, 2.3, 2.3, 2.5);
+    box(-16, 28, 2.1, 2.1, 1.7, R);
+    sbBox(scene, -21, 0.07, 22, 6, 0.14, 6, [0.40,0.34,0.24]);
+    // B window wall
+    wall(-11, 20, 2.2, 12, 5);
+    sbBox(scene, -11, 2.8, 20, 2.5, 1.8, 5, D);
+    road(-20, 20, 10, 12);
 
-    // ========== TUNNELS (T left -> B) ==========
-    // lower tunnels near mid
-    sbBox(scene, -14, 3.1, -8, 14, 0.55, 12, D); // roof
-    wall(-21, -8, 1.6, 12, 3.2);
-    wall(-7, -8, 1.6, 12, 3.2);
-    sbBox(scene, -14, 0.2, -8, 12, 0.4, 10, D);  // floor
-    // upper tunnels toward B
-    sbBox(scene, -18, 3.3, 4, 12, 0.55, 10, D);
-    wall(-24, 4, 1.6, 10, 3.4);
-    wall(-12, 4, 1.6, 10, 3.4);
-    // stairs lower -> upper
-    sbBox(scene, -16, 0.55, -2, 6, 0.7, 3.5, W);
-    sbBox(scene, -16, 1.15, 0.5, 6, 0.7, 3.2, W);
-    sbBox(scene, -16, 1.75, 3, 6, 0.7, 2.5, W);
-    // choke exit into B
-    wall(-18, 11, 8, 2, 3.8);
-    door(-18, 11, 1);
+    // ===== TUNNELS (west, T -> B) =====
+    sbBox(scene, -16, 3.2, -10, 16, 0.6, 14, D); // lower roof
+    wall(-24, -10, 1.8, 14, 3.4);
+    wall(-8, -10, 1.8, 14, 3.4);
+    sbBox(scene, -16, 0.18, -10, 14, 0.36, 12, D);
+    // upper
+    sbBox(scene, -20, 3.4, 4, 14, 0.6, 12, D);
+    wall(-27, 4, 1.8, 12, 3.6);
+    wall(-13, 4, 1.8, 12, 3.6);
+    // stairs
+    sbBox(scene, -18, 0.55, -3, 7, 0.75, 4, W);
+    sbBox(scene, -18, 1.2, 0, 7, 0.75, 3.5, W);
+    sbBox(scene, -18, 1.85, 3, 7, 0.75, 3, W);
+    // exit choke to B
+    wall(-20, 12, 10, 2.2, 4);
+    doorZ(-20, 12);
 
-    // ========== TOP MID (CT <-> B connector) ==========
-    wall(-8, 22, 2, 10, 3.8);
-    box(-4, 20, 2.2, 2.2, 1.6);
-    box(-2, 24, 2.0, 2.0, 1.4);
+    // ===== TOP MID (CT - B) =====
+    wall(-9, 24, 2.2, 12, 4.2);
+    box(-4, 22, 2.3, 2.3, 1.7);
+    box(-2, 26, 2.1, 2.1, 1.5);
+    road(-6, 24, 8, 10);
 
-    // ========== outside long from T (scaffolding feel) ==========
-    wall(8, -30, 5, 2, 3.5);
-    box(6, -18, 2.4, 2.4, 1.6);
-    box(8, -14, 2.0, 2.0, 1.3, G);
-
-    // border already drawn above
+    // ===== outside long / scaffold near T =====
+    wall(9, -32, 6, 2.2, 4);
+    box(6, -18, 2.5, 2.5, 1.7);
+    box(9, -14, 2.2, 2.2, 1.4, G);
   }
 }
-
 function sbSpawnBots(n){
   sbBots.forEach(b=>b.dispose()); sbBots=[];
   const enemyTeam = (sbTeam==='CT') ? 'T' : 'CT';
