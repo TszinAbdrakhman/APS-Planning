@@ -838,10 +838,11 @@
                   <option value="mirage">Mirage</option>
                   <option value="inferno">Inferno</option>
                 </select>
+                <div style="font-size:12px;color:#9aa;margin-bottom:8px;">Нужен вход в аккаунт. Хост создаёт комнату → скидывает <b>код</b> другу → друг жмёт «Войти» → хост «Старт».</div>
                 <button type="button" class="sb-menu-btn" onclick="sbCreateRoom()">Создать комнату</button>
                 <label>Или ввести код комнаты</label>
                 <div class="sb-menu-row">
-                  <input type="text" id="sbJoinCode" placeholder="Код комнаты" maxlength="6">
+                  <input type="text" id="sbJoinCode" placeholder="КОД" maxlength="8" style="text-transform:uppercase;letter-spacing:2px;font-weight:700;">
                   <button type="button" class="sb-menu-btn" style="width:auto;margin-top:0;padding:10px 14px;" onclick="sbJoinRoom()">Войти</button>
                 </div>
                 <div class="sb-lobby-list" id="sbLobbyInfo"></div>
@@ -4263,12 +4264,20 @@ class SBPlayer {
   broadcastState(){
     if(!this._bc || performance.now()-this._bc>50){
       this._bc=performance.now();
+      if(!sbRoomChannel) return;
       sbRoomChannel.send({ type:'broadcast', event:'pos', payload:{
         id:sbMyId,
         x:this.camera.position.x, y:this.camera.position.y, z:this.camera.position.z,
         ry:this.camera.rotation.y, rx:this.camera.rotation.x,
-        alive:this.isAlive, w:this.currentWeaponId
+        alive:this.isAlive, w:this.currentWeaponId,
+        live: !!window.sbMatchLive,
+        map: sbCurrentMap
       }});
+      // host keeps advertising live match for late joiners
+      if(sbIsHost && window.sbMatchLive && (!this._liveBc || performance.now()-this._liveBc>2000)){
+        this._liveBc = performance.now();
+        sbRoomChannel.send({ type:'broadcast', event:'match_live', payload: window.sbMatchPayload || { map:sbCurrentMap, host:sbMyId } });
+      }
     }
   }
   updateUI(){
@@ -4333,10 +4342,10 @@ function sbMapSpawns(map, team){
   if(map==='inferno'){
     return team==='CT' ? [[-16,18,3.14],[16,16,3.14],[0,20,3.14]] : [[-18,-22,0.3],[18,-20,-0.4],[0,-26,0]];
   }
-  // dust II — CT near +Z (under catwalk/CT spawn), T at -Z plateau
+  // dust II — T bottom, CT top
   return team==='CT'
-    ? [[-4, 30, Math.PI],[4, 30, Math.PI],[0, 32, Math.PI],[-8, 28, Math.PI],[8, 28, Math.PI]]
-    : [[-4, -32, 0],[4, -32, 0],[0, -34, 0],[-8, -30, 0],[8, -30, 0]];
+    ? [[-6, 33, Math.PI],[0, 34, Math.PI],[6, 33, Math.PI],[-3, 31, Math.PI],[3, 31, Math.PI]]
+    : [[-6, -32, 0],[0, -33, 0],[6, -32, 0],[-3, -30, 0],[3, -30, 0]];
 }
 
 function sbCreateMap(scene, mapId){
@@ -4385,99 +4394,121 @@ function sbCreateMap(scene, mapId){
     sbBox(scene,-20,1,0,4,2,8,[0.34,0.28,0.24]);
     sbBox(scene,20,1,2,4,2,8,[0.34,0.28,0.24]);
   } else {
-    // Dust II layout (inspired by CB/CS zone names — original low-poly geometry)
-    // Axes: +Z = CT side, -Z = T side; +X = Long/A, -X = B/Tunnels
-    gmat.diffuseColor=new BABYLON.Color3(0.48,0.40,0.28); ground.material=gmat;
-    const sand=[0.55,0.45,0.30], wallS=[0.42,0.36,0.26], boxC=[0.50,0.42,0.28];
-    const dark=[0.32,0.28,0.22], midC=[0.45,0.38,0.27], blue=[0.25,0.35,0.55];
+    // ========== DUST II (readable CS-style layout) ==========
+    // Top-down: T bottom (-Z), CT top (+Z), Long/A right (+X), B/Tunnels left (-X)
+    gmat.diffuseColor = new BABYLON.Color3(0.62, 0.52, 0.34);
+    ground.material = gmat;
+    const W = [0.46, 0.40, 0.30];   // walls
+    const B = [0.55, 0.48, 0.35];   // boxes
+    const D = [0.35, 0.30, 0.24];   // dark / tunnel
+    const BL = [0.28, 0.40, 0.62];  // blue container
+    const R = [0.50, 0.22, 0.16];   // red-ish detail
 
-    // --- T SPAWN (south, -Z) elevated plateau ---
-    sbBox(scene, 0, 0.4, -32, 22, 0.8, 12, sand); // plateau
-    sbBox(scene, 0, 1.2, -38, 18, 2.4, 2, wallS); // back wall
-    sbBox(scene,-10, 1.0, -32, 2, 2, 8, wallS);
-    sbBox(scene, 10, 1.0, -32, 2, 2, 8, wallS);
+    // helper wall strip
+    function wall(x,z,w,d,h,y){ sbBox(scene,x,(y==null?h/2:y),z,w,h,d,W); }
+    function box(x,z,w,d,h,col){ sbBox(scene,x,h/2,z,w,h,d,col||B); }
 
-    // --- LONG A (east corridor, +X, from T to A) ---
-    sbBox(scene, 22, 1.5, -18, 2.5, 3, 20, wallS); // long outer wall
-    sbBox(scene, 14, 1.5, -18, 2.5, 3, 14, wallS); // long inner
-    // long doors (gap around z=-26)
-    sbBox(scene, 18, 1.8, -28, 8, 3.6, 1.5, wallS);
-    sbBox(scene, 14, 1.0, -28, 1.2, 2, 1.2, wallS);
-    sbBox(scene, 22, 1.0, -28, 1.2, 2, 1.2, wallS);
-    // blue container / cover on long
-    sbBox(scene, 18, 1.0, -12, 3.5, 2.0, 2.5, blue);
-    // long pit (lower cover near CT end of long)
-    sbBox(scene, 18, 0.35, 2, 5, 0.7, 4, dark);
-    sbBox(scene, 16, 1.2, 6, 1.5, 2.4, 3, wallS);
+    // ---- T SPAWN (bottom) ---- open yard + back wall
+    wall(0, -36, 28, 1.5, 4);          // T back
+    wall(-14, -30, 1.5, 12, 3.5);      // T left
+    wall(14, -30, 1.5, 12, 3.5);       // T right
+    // ramp up into mid / long
+    sbBox(scene, 0, 0.35, -26, 10, 0.7, 6, [0.55,0.46,0.32]);
 
-    // --- A SITE (NE) two levels + boxes ---
-    sbBox(scene, 16, 0.5, 18, 14, 1.0, 12, sand); // A platform
-    sbBox(scene, 16, 1.6, 24, 12, 2.2, 2, wallS); // A back
-    sbBox(scene, 22, 1.4, 16, 2, 2.8, 10, wallS);
-    // A site boxes (cover)
-    sbBox(scene, 14, 1.0, 16, 2.5, 2.0, 2.5, boxC);
-    sbBox(scene, 18, 0.9, 14, 2.2, 1.8, 2.2, boxC);
-    sbBox(scene, 12, 1.1, 20, 2, 2.2, 2, boxC);
-    // goose / car-like low cover
-    sbBox(scene, 20, 0.6, 12, 3, 1.2, 1.5, [0.4,0.15,0.12]);
+    // ---- LONG DOORS + LONG A (right corridor) ----
+    // doors pillar
+    wall(10, -24, 3, 2, 4);
+    wall(18, -24, 3, 2, 4);
+    // long outer wall (far right)
+    wall(26, -6, 2, 40, 4.5);
+    // long inner wall (toward mid)
+    wall(12, -8, 2, 28, 4);
+    // long floor path is open ground between x=13..25, z=-22..12
+    // blue dumpster
+    box(18, -10, 3.2, 2.4, 2.2, BL);
+    // long corner before A
+    wall(20, 8, 8, 2, 4);
+    box(16, 0, 2.5, 2.5, 1.8, B);
+    // pit (low area CT side of long)
+    sbBox(scene, 18, 0.25, 4, 6, 0.5, 5, D);
+    wall(22, 4, 1.5, 5, 2.5);
 
-    // --- SHORT / CATWALK (from mid to A) ---
-    sbBox(scene, 6, 1.6, 8, 8, 0.5, 3, midC); // catwalk floor elevated
-    sbBox(scene, 6, 2.4, 6, 8, 1.6, 1.2, wallS); // rail
-    sbBox(scene, 10, 1.2, 12, 2, 2.4, 4, wallS); // stairs side to A
-    // steps toward A
-    sbBox(scene, 12, 0.9, 14, 3, 0.6, 2, midC);
-    sbBox(scene, 13, 1.3, 16, 3, 0.6, 2, midC);
+    // ---- A SITE (top-right) ---- open platform + site boxes
+    wall(26, 22, 2, 18, 4.5);          // A outer
+    wall(14, 30, 20, 2, 4);            // A back
+    wall(8, 22, 2, 10, 3.5);           // A toward short
+    // classic A boxes
+    box(16, 18, 2.8, 2.8, 2.2);
+    box(20, 16, 2.4, 2.4, 1.8);
+    box(14, 22, 2.2, 2.2, 2.4);
+    box(18, 22, 3.0, 2.0, 1.6);
+    box(22, 20, 2.0, 2.0, 1.5, R);
 
-    // --- MID (center, Z axis) ---
-    // mid doors structure near CT
-    sbBox(scene, -3, 2.0, 10, 1.5, 4, 4, wallS);
-    sbBox(scene,  3, 2.0, 10, 1.5, 4, 4, wallS);
-    sbBox(scene,  0, 3.2, 10, 8, 1.2, 1.5, wallS); // top of mid doors
-    // suicide slope blocks (sides of mid)
-    sbBox(scene, -6, 1.0, -8, 2, 2, 16, wallS);
-    sbBox(scene,  6, 1.0, -4, 2, 2, 10, wallS);
-    // mid cover Xbox-like
-    sbBox(scene, 0, 0.7, -6, 2.5, 1.4, 2.5, boxC);
-    sbBox(scene, -2, 0.6, 4, 2, 1.2, 2, boxC);
+    // ---- SHORT / CATWALK (mid-right elevated to A) ----
+    sbBox(scene, 6, 1.5, 10, 10, 0.4, 4, W);  // catwalk deck
+    wall(6, 8, 10, 1.2, 2.2);                 // catwalk rail outer
+    wall(1, 10, 1.2, 4, 3);                   // toward mid
+    // stairs to A
+    sbBox(scene, 10, 0.5, 14, 4, 1.0, 3, W);
+    sbBox(scene, 12, 1.0, 17, 4, 1.0, 3, W);
+    sbBox(scene, 13, 1.5, 20, 4, 1.0, 2, W);
 
-    // --- CT SPAWN (north +Z, under catwalk roof feel) ---
-    sbBox(scene, 0, 0.3, 30, 20, 0.6, 10, sand);
-    sbBox(scene, 0, 2.5, 36, 16, 1.2, 2, wallS); // roof slab
-    sbBox(scene,-8, 1.5, 32, 2, 3, 8, wallS);
-    sbBox(scene, 8, 1.5, 32, 2, 3, 8, wallS);
-    sbBox(scene, 0, 1.8, 36, 18, 3.6, 1.5, wallS); // back
+    // ---- MID (center spine) ----
+    // walls forming mid channel
+    wall(-5, -4, 1.8, 30, 3.5);        // mid left wall
+    wall(5, -2, 1.8, 24, 3.5);         // mid right wall
+    // mid doors (gap at z≈12)
+    wall(-4, 12, 3, 3, 5);
+    wall(4, 12, 3, 3, 5);
+    sbBox(scene, 0, 4.2, 12, 11, 1.2, 2.5, W); // lintel
+    // xbox / mid cover
+    box(0, -8, 2.6, 2.6, 1.6);
+    box(0, 4, 2.2, 2.2, 1.4);
 
-    // --- B SITE (NW, -X +Z) lots of boxes ---
-    sbBox(scene,-18, 0.5, 16, 12, 1.0, 12, sand);
-    sbBox(scene,-22, 1.8, 20, 2, 3.6, 14, wallS); // B outer
-    sbBox(scene,-14, 1.6, 24, 10, 3.2, 2, wallS); // B back
-    // B boxes / window structure
-    sbBox(scene,-16, 1.2, 14, 2.5, 2.4, 2.5, boxC);
-    sbBox(scene,-20, 1.0, 12, 2.2, 2.0, 2.2, boxC);
-    sbBox(scene,-15, 0.9, 18, 2, 1.8, 2, boxC);
-    sbBox(scene,-19, 1.4, 18, 3, 2.8, 1.5, wallS); // window wall
-    sbBox(scene,-12, 1.2, 12, 2, 2.4, 3, wallS); // door to mid
+    // ---- CT SPAWN (top center) ----
+    wall(0, 38, 24, 2, 4);             // CT back
+    wall(-12, 32, 2, 10, 3.5);
+    wall(12, 32, 2, 10, 3.5);
+    // roof over CT
+    sbBox(scene, 0, 3.5, 34, 18, 0.5, 8, W);
 
-    // --- TUNNELS (Upper/Lower B) west side, roofed ---
-    // lower tunnels near mid
-    sbBox(scene,-12, 2.2, -2, 10, 1.2, 8, dark); // roof
-    sbBox(scene,-16, 1.0, -2, 1.5, 2, 8, wallS);
-    sbBox(scene, -8, 1.0, -2, 1.5, 2, 8, wallS);
-    sbBox(scene,-12, 0.3, -2, 8, 0.6, 8, dark); // floor
-    // upper toward B
-    sbBox(scene,-14, 2.4, 6, 8, 1.2, 6, dark); // roof upper
-    sbBox(scene,-18, 1.2, 6, 1.5, 2.4, 6, wallS);
-    sbBox(scene,-10, 1.2, 6, 1.5, 2.4, 6, wallS);
-    // spiral-ish step up
-    sbBox(scene,-14, 0.8, 2, 4, 0.5, 3, midC);
-    sbBox(scene,-14, 1.3, 4, 4, 0.5, 2, midC);
-    // tunnel exit to B (tight)
-    sbBox(scene,-16, 1.2, 10, 3, 2.4, 2, wallS);
+    // ---- B SITE (top-left) ----
+    wall(-26, 18, 2, 20, 4.5);         // B outer left
+    wall(-16, 30, 16, 2, 4);           // B back
+    // B site boxes (dense cover)
+    box(-18, 16, 2.6, 2.6, 2.2);
+    box(-22, 14, 2.4, 2.4, 1.9);
+    box(-16, 20, 2.2, 2.2, 2.0);
+    box(-20, 20, 3.0, 2.0, 1.7);
+    box(-18, 24, 2.0, 2.0, 2.3);
+    // window wall facing mid
+    wall(-12, 16, 2, 8, 4);
+    sbBox(scene, -12, 2.5, 16, 2.2, 1.5, 3, D); // window hole visual (darker block mid-height - solid still)
 
-    // --- Outside long / top mid connector walls ---
-    sbBox(scene, 10, 1.2, -24, 4, 2.4, 4, wallS);
-    sbBox(scene, -8, 1.0, -20, 4, 2, 6, wallS);
+    // ---- TUNNELS (left side, T -> B) ----
+    // lower tunnels (near mid, covered)
+    sbBox(scene, -12, 3.0, -6, 12, 0.6, 10, D); // roof
+    wall(-18, -6, 1.5, 10, 3);
+    wall(-6, -6, 1.5, 10, 3);
+    sbBox(scene, -12, 0.25, -6, 10, 0.5, 8, D); // floor
+    // upper tunnels toward B
+    sbBox(scene, -16, 3.2, 4, 10, 0.6, 8, D);
+    wall(-21, 4, 1.5, 8, 3.2);
+    wall(-11, 4, 1.5, 8, 3.2);
+    // steps lower -> upper
+    sbBox(scene, -14, 0.6, -1, 5, 0.7, 3, W);
+    sbBox(scene, -14, 1.2, 1, 5, 0.7, 3, W);
+    sbBox(scene, -14, 1.8, 3, 5, 0.7, 2, W);
+    // exit into B (tight choke)
+    wall(-16, 10, 6, 2, 3.5);
+
+    // ---- TOP MID / CT to B connector ----
+    wall(-8, 20, 2, 8, 3.5);
+    box(-4, 18, 2, 2, 1.5);
+
+    // ---- outside long connector from T ----
+    wall(8, -28, 4, 2, 3.5);
+    box(6, -20, 2.2, 2.2, 1.5);
   }
 }
 
@@ -4612,68 +4643,242 @@ function sbRandCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(
 
 async function sbCreateRoom(){
   sbEnsureEngine();
+  if(!currentUser){ alert('Сначала войди в аккаунт на сайте — онлайн через Supabase.'); return; }
   sbMode='online'; sbIsHost=true; sbOnlineStarted=false;
+  window.sbMatchLive = false; window.sbMatchPayload = null;
   sbCurrentMap=document.getElementById('sbOnlineMapSelect')?.value||'dust';
   sbRoomCode=sbRandCode();
-  sbMyId=(typeof currentUser!=='undefined'&&currentUser?.id)||('p_'+Math.random().toString(36).slice(2,9));
+  sbMyId = currentUser.id;
   const info=document.getElementById('sbLobbyInfo');
-  if(info) info.innerHTML=`Код комнаты: <b style="color:var(--amber)">${sbRoomCode}</b><br>Карта: ${sbCurrentMap}<br>Ждём игроков…`;
+  if(info) info.innerHTML=`Создание комнаты <b style="color:var(--amber)">${sbRoomCode}</b>…`;
   document.getElementById('sbStartOnlineBtn').style.display='block';
 
-  if(sbRoomChannel){ try{ await sb.removeChannel(sbRoomChannel); }catch(e){} }
-  sbRoomChannel = sb.channel('bs_'+sbRoomCode, { config:{ broadcast:{ self:false }, presence:{ key:sbMyId } } });
-  sbRoomChannel.on('presence', { event:'sync' }, ()=>{
-    const state=sbRoomChannel.presenceState();
-    const count=Object.keys(state).length;
-    if(info) info.innerHTML=`Код: <b style="color:var(--amber)">${sbRoomCode}</b> · карта ${sbCurrentMap}<br>В комнате: ${count} игрок(ов)`;
-  });
-  sbRoomChannel.on('broadcast', { event:'pos' }, ({payload})=> sbUpsertRemote(payload));
-  sbRoomChannel.on('broadcast', { event:'hit' }, ({payload})=>{
-    if(payload.target===sbMyId && sbPlayer) sbPlayer.takeDamage(payload.dmg||20);
-  });
-  sbRoomChannel.on('broadcast', { event:'start' }, ({payload})=>{
-    if(!sbIsHost) sbBeginOnlineMatch(payload.map||sbCurrentMap);
-  });
-  sbRoomChannel.on('broadcast', { event:'death' }, ({payload})=>{
-    if(sbRemotePlayers[payload.id]) sbRemotePlayers[payload.id].root.setEnabled(false);
-  });
-  await sbRoomChannel.subscribe(async (status)=>{
-    if(status==='SUBSCRIBED'){
-      await sbRoomChannel.track({ id:sbMyId, name:(typeof currentUser!=='undefined'&&currentUser?.username)||'Host' });
-    }
-  });
+  const ok = await sbConnectRoom(sbRoomCode, true);
+  if(!ok){
+    if(info) info.innerHTML=`<span style="color:#f66">Не удалось подключить Realtime.</span><br>Проверь, что в Supabase включён Realtime.<br>Код комнаты: <b>${sbRoomCode}</b>`;
+    return;
+  }
+  // Register room in DB so others can find it
+  try{
+    await sb.from('blockstrike_rooms').upsert({
+      code: sbRoomCode,
+      host_id: currentUser.id,
+      map: sbCurrentMap,
+      status: 'lobby',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'code' });
+  }catch(e){ console.warn('rooms table', e); }
+
+  sbUpdateLobbyInfo();
 }
 
 async function sbJoinRoom(){
   sbEnsureEngine();
+  if(!currentUser){ alert('Сначала войди в аккаунт на сайте.'); return; }
   const code=(document.getElementById('sbJoinCode')?.value||'').trim().toUpperCase();
-  if(code.length<4){ alert('Введи код комнаты'); return; }
+  if(code.length<4){ alert('Введи код комнаты (6 символов)'); return; }
   sbMode='online'; sbIsHost=false; sbOnlineStarted=false; sbRoomCode=code;
-  sbMyId=(typeof currentUser!=='undefined'&&currentUser?.id)||('p_'+Math.random().toString(36).slice(2,9));
+  sbMyId = currentUser.id;
   const info=document.getElementById('sbLobbyInfo');
   if(info) info.innerHTML=`Подключение к <b>${code}</b>…`;
   document.getElementById('sbStartOnlineBtn').style.display='none';
 
-  if(sbRoomChannel){ try{ await sb.removeChannel(sbRoomChannel); }catch(e){} }
-  sbRoomChannel = sb.channel('bs_'+code, { config:{ broadcast:{ self:false }, presence:{ key:sbMyId } } });
-  sbRoomChannel.on('presence', { event:'sync' }, ()=>{
-    const state=sbRoomChannel.presenceState();
-    if(info) info.innerHTML=`Комната <b style="color:var(--amber)">${code}</b><br>Игроков: ${Object.keys(state).length}<br>Жди старта от хоста`;
+  let roomLive = false;
+  let roomMap = sbCurrentMap;
+  try{
+    const { data } = await sb.from('blockstrike_rooms').select('code,map,status,host_id').eq('code', code).maybeSingle();
+    if(data){
+      if(data.map){ roomMap = data.map; sbCurrentMap = data.map; }
+      if(data.status==='closed'){ if(info) info.textContent='Комната закрыта'; return; }
+      if(data.status==='live') roomLive = true;
+    }
+  }catch(e){ console.warn(e); }
+
+  const ok = await sbConnectRoom(code, false);
+  if(!ok){
+    if(info) info.innerHTML=`<span style="color:#f66">Не удалось войти в комнату ${code}.</span><br>Хост должен быть онлайн и код верный. Оба должны быть в аккаунте.`;
+    return;
+  }
+  try{
+    sbRoomChannel.send({ type:'broadcast', event:'hello', payload:{ id:sbMyId, name: currentUser.username||'Player', role:'join', want:'state' } });
+    sbRoomChannel.send({ type:'broadcast', event:'request_state', payload:{ id:sbMyId } });
+  }catch(e){}
+
+  if(roomLive){
+    setTimeout(()=> sbTryJoinLiveMatch({ map: roomMap }), 400);
+  }
+
+  let asks = 0;
+  const askIv = setInterval(()=>{
+    asks++;
+    if(sbOnlineStarted || sbGameActive || asks>30){ clearInterval(askIv); return; }
+    try{
+      sbRoomChannel.send({ type:'broadcast', event:'request_state', payload:{ id:sbMyId } });
+      sbRoomChannel.send({ type:'broadcast', event:'hello', payload:{ id:sbMyId, role:'join', want:'state' } });
+    }catch(e){}
+    // also re-check DB
+    sb.from('blockstrike_rooms').select('status,map').eq('code', code).maybeSingle().then(({data})=>{
+      if(data && data.status==='live') sbTryJoinLiveMatch({ map: data.map || roomMap });
+    }).catch(()=>{});
+  }, 700);
+
+  sbUpdateLobbyInfo();
+}
+
+function sbUpdateLobbyInfo(){
+  const info=document.getElementById('sbLobbyInfo');
+  if(!info || !sbRoomCode) return;
+  let players = 1;
+  try{
+    if(sbRoomChannel){
+      const st = sbRoomChannel.presenceState() || {};
+      players = Math.max(1, Object.keys(st).length);
+    }
+  }catch(e){}
+  const role = sbIsHost ? 'ты хост' : 'ты гость';
+  info.innerHTML = `Код: <b style="color:var(--amber);font-size:18px;letter-spacing:2px">${sbRoomCode}</b><br>`+
+    `Карта: ${sbMapNames[sbCurrentMap]||sbCurrentMap} · ${role}<br>`+
+    `В канале: <b>${players}</b> · статус: <span style="color:#4ade80">Realtime OK</span><br>`+
+    (sbIsHost
+      ? (window.sbMatchLive || sbGameActive
+          ? 'Матч идёт — новые игроки подключатся автоматически'
+          : 'Дождись друга в канале (число ≥2), затем «Старт матча»')
+      : (sbGameActive || sbOnlineStarted
+          ? 'Ты в матче'
+          : 'Подключено. Ждём сигнал старта от хоста…'));
+}
+
+/** Connect both host and guest to the same public Realtime channel */
+async function sbConnectRoom(code, isHost){
+  const topic = 'blockstrike-' + String(code).toLowerCase();
+
+  if(sbRoomChannel){
+    try{ await sb.removeChannel(sbRoomChannel); }catch(e){}
+    sbRoomChannel = null;
+  }
+
+  // Clear previous remotes
+  Object.keys(sbRemotePlayers).forEach(id=>{
+    try{ sbRemotePlayers[id].root.dispose(); }catch(e){}
   });
-  sbRoomChannel.on('broadcast', { event:'pos' }, ({payload})=> sbUpsertRemote(payload));
-  sbRoomChannel.on('broadcast', { event:'hit' }, ({payload})=>{
-    if(payload.target===sbMyId && sbPlayer) sbPlayer.takeDamage(payload.dmg||20);
-  });
-  sbRoomChannel.on('broadcast', { event:'start' }, ({payload})=>{
-    sbBeginOnlineMatch(payload.map||'dust');
-  });
-  sbRoomChannel.on('broadcast', { event:'death' }, ({payload})=>{
-    if(sbRemotePlayers[payload.id]) sbRemotePlayers[payload.id].root.setEnabled(false);
-  });
-  await sbRoomChannel.subscribe(async (status)=>{
-    if(status==='SUBSCRIBED'){
-      await sbRoomChannel.track({ id:sbMyId, name:(typeof currentUser!=='undefined'&&currentUser?.username)||'Player' });
-      if(info) info.innerHTML=`В комнате <b style="color:var(--amber)">${code}</b><br>Жди старта от хоста`;
+  sbRemotePlayers = {};
+
+  return await new Promise((resolve)=>{
+    let resolved = false;
+    const done = (ok)=>{ if(!resolved){ resolved=true; resolve(ok); } };
+
+    try{
+      sbRoomChannel = sb.channel(topic, {
+        config: {
+          broadcast: { self: false, ack: false },
+          presence: { key: sbMyId }
+        }
+      });
+
+      sbRoomChannel.on('presence', { event:'sync' }, ()=>{
+        sbUpdateLobbyInfo();
+        try{
+          const st = sbRoomChannel.presenceState() || {};
+          for(const key of Object.keys(st)){
+            const metas = st[key] || [];
+            for(const m of metas){
+              if(m && m.live && m.host && !sbIsHost){
+                sbTryJoinLiveMatch({ map: m.map || sbCurrentMap });
+              }
+            }
+          }
+        }catch(e){}
+      });
+      sbRoomChannel.on('presence', { event:'join' }, ()=>{ sbUpdateLobbyInfo(); });
+      sbRoomChannel.on('presence', { event:'leave' }, ()=>{ sbUpdateLobbyInfo(); });
+
+      sbRoomChannel.on('broadcast', { event:'hello' }, ({payload})=>{
+        if(!payload || payload.id===sbMyId) return;
+        sbUpdateLobbyInfo();
+        if(sbIsHost){
+          try{
+            sbRoomChannel.send({ type:'broadcast', event:'hello', payload:{ id:sbMyId, name:(currentUser&&currentUser.username)||'Host', role:'host' } });
+            // CRITICAL: if match already running, tell guest to join now
+            if(window.sbMatchLive || sbOnlineStarted || sbGameActive){
+              const payloadLive = window.sbMatchPayload || { map:sbCurrentMap, host:sbMyId, t:Date.now() };
+              sbRoomChannel.send({ type:'broadcast', event:'start', payload: payloadLive });
+              sbRoomChannel.send({ type:'broadcast', event:'match_live', payload: payloadLive });
+            }
+          }catch(e){}
+        }
+      });
+      sbRoomChannel.on('broadcast', { event:'request_state' }, ({payload})=>{
+        if(!sbIsHost) return;
+        if(payload && payload.id===sbMyId) return;
+        try{
+          if(window.sbMatchLive || sbOnlineStarted || sbGameActive){
+            const payloadLive = window.sbMatchPayload || { map:sbCurrentMap, host:sbMyId, t:Date.now() };
+            sbRoomChannel.send({ type:'broadcast', event:'start', payload: payloadLive });
+            sbRoomChannel.send({ type:'broadcast', event:'match_live', payload: payloadLive });
+          } else {
+            sbRoomChannel.send({ type:'broadcast', event:'hello', payload:{ id:sbMyId, role:'host', status:'lobby' } });
+          }
+        }catch(e){}
+      });
+
+      
+      sbRoomChannel.on('broadcast', { event:'hit' }, ({payload})=>{
+        if(payload && payload.target===sbMyId && sbPlayer) sbPlayer.takeDamage(payload.dmg||20);
+      });
+      sbRoomChannel.on('broadcast', { event:'start' }, ({payload})=>{
+        sbTryJoinLiveMatch(payload);
+      });
+      sbRoomChannel.on('broadcast', { event:'match_live' }, ({payload})=>{
+        sbTryJoinLiveMatch(payload);
+      });
+      sbRoomChannel.on('broadcast', { event:'death' }, ({payload})=>{
+        if(payload && sbRemotePlayers[payload.id]) sbRemotePlayers[payload.id].root.setEnabled(false);
+      });
+      // If host is already running around, their pos packets also wake the guest
+      sbRoomChannel.on('broadcast', { event:'pos' }, ({payload})=>{
+        if(payload && payload.id!==sbMyId){
+          if(!sbIsHost && !sbOnlineStarted && !sbGameActive){
+            // host is already in match — join automatically
+            sbTryJoinLiveMatch({ map: sbCurrentMap });
+          }
+          sbUpsertRemote(payload);
+        }
+      });
+
+      const timeout = setTimeout(()=>{
+        console.warn('Realtime subscribe timeout');
+        done(false);
+      }, 8000);
+
+      sbRoomChannel.subscribe(async (status, err)=>{
+        console.log('BS room status', status, err);
+        if(status==='SUBSCRIBED'){
+          clearTimeout(timeout);
+          try{
+            await sbRoomChannel.track({
+              id: sbMyId,
+              name: (currentUser && currentUser.username) || (isHost?'Host':'Player'),
+              host: !!isHost,
+              map: sbCurrentMap
+            });
+          }catch(e){ console.warn('track', e); }
+          // announce presence via broadcast too (works even if presence lagging)
+          try{
+            sbRoomChannel.send({
+              type:'broadcast',
+              event:'hello',
+              payload:{ id:sbMyId, name:(currentUser&&currentUser.username)||'P', role: isHost?'host':'join' }
+            });
+          }catch(e){}
+          done(true);
+        } else if(status==='CHANNEL_ERROR' || status==='TIMED_OUT' || status==='CLOSED'){
+          clearTimeout(timeout);
+          done(false);
+        }
+      });
+    }catch(e){
+      console.error(e);
+      done(false);
     }
   });
 }
@@ -4706,754 +4911,54 @@ function sbBeginOnlineMatch(map){
 
 function sbStartOnlineGame(){
   if(!sbIsHost||!sbRoomChannel) return;
-  sbRoomChannel.send({ type:'broadcast', event:'start', payload:{ map:sbCurrentMap } });
+  try{
+    sb.from('blockstrike_rooms').update({ status:'live', map:sbCurrentMap }).eq('code', sbRoomCode);
+  }catch(e){}
+
+  const payload = { map:sbCurrentMap, host:sbMyId, t: Date.now() };
+  window.sbMatchLive = true;
+  window.sbMatchPayload = payload;
+
+  // Send start many times — guest often misses a single packet
+  const sendStart = ()=>{
+    try{
+      sbRoomChannel.send({ type:'broadcast', event:'start', payload });
+      sbRoomChannel.send({ type:'broadcast', event:'match_live', payload });
+    }catch(e){}
+  };
+  sendStart();
+  let n = 0;
+  const iv = setInterval(()=>{
+    n++; sendStart();
+    if(n>=15 || !sbIsHost) clearInterval(iv);
+  }, 800);
+
+  // presence: mark host in live match
+  try{
+    sbRoomChannel.track({
+      id: sbMyId,
+      name: (currentUser && currentUser.username) || 'Host',
+      host: true,
+      live: true,
+      map: sbCurrentMap
+    });
+  }catch(e){}
+
   sbBeginOnlineMatch(sbCurrentMap);
 }
 
-
-/* ---- Admin map editor + custom maps (Supabase) ---- */
-let sbEditorMode = false;
-let sbEditorTool = 'place'; // place | move | rotate | delete | spawn_t | spawn_ct
-let sbDrag = null; // { mesh, mode, lastX, lastZ, startRot }
-let sbMapCustomCache = {}; // mapKey -> { boxes:[], spawnsT:[], spawnsCT:[] }
-let sbEditorCam = null;
-let sbSkinPreview = { engine:null, scene:null, gun:null, mat:null };
-let sbPaintDrawing = false;
-
-function sbIsAdmin(){
-  const u = (currentUser && currentUser.username) ? currentUser.username : '';
-  return u.toLowerCase() === 'abdrakhman';
-}
-
-function sbNormalizeMapData(data){
-  if(Array.isArray(data)) return { boxes:data, spawnsT:[], spawnsCT:[], fullMap:false };
-  if(data && typeof data==='object') return {
-    boxes:data.boxes||[], spawnsT:data.spawnsT||[], spawnsCT:data.spawnsCT||[],
-    fullMap: !!data.fullMap
-  };
-  return { boxes:[], spawnsT:[], spawnsCT:[], fullMap:false };
-}
-
-function sbOpenSkins(){
-  document.getElementById('sbBotsOptions').style.display='none';
-  document.getElementById('sbOnlineOptions').style.display='none';
-  document.getElementById('sbSkinsPanel').style.display='block';
-  document.getElementById('sbPaintPanel').style.display='none';
-  const w = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  window.sbPreviewSkinId = sbGetEquippedSkin(w) || 'default';
-  sbRenderSkinGrid();
-  setTimeout(()=>{ sbInitSkinPreview(); sbPreviewSkin(window.sbPreviewSkinId); }, 50);
-}
-function sbCloseSkins(){
-  document.getElementById('sbSkinsPanel').style.display='none';
-  sbDisposeSkinPreview();
-  sbSetMode(sbMode);
-}
-
-function sbInitSkinPreview(){
-  const canvas = document.getElementById('sbSkinPreviewCanvas');
-  if(!canvas || sbSkinPreview.engine) { sbSkinPreviewWeapon(); return; }
-  const engine = new BABYLON.Engine(canvas, true, { alpha:true });
-  const scene = new BABYLON.Scene(engine);
-  scene.clearColor = new BABYLON.Color4(0.05,0.06,0.1,1);
-  const cam = new BABYLON.ArcRotateCamera('sc', -0.9, 1.1, 2.2, new BABYLON.Vector3(0,0,0), scene);
-  cam.attachControl(canvas, true);
-  cam.lowerRadiusLimit=1.2; cam.upperRadiusLimit=4;
-  new BABYLON.HemisphericLight('l', new BABYLON.Vector3(0.4,1,0.3), scene).intensity=1.1;
-  sbSkinPreview = { engine, scene, gun:null, mat:null, cam };
-  engine.runRenderLoop(()=>{ if(sbSkinPreview.gun) sbSkinPreview.gun.rotation.y += 0.012; scene.render(); });
-  sbSkinPreviewWeapon();
-}
-function sbDisposeSkinPreview(){
-  if(sbSkinPreview.engine){ sbSkinPreview.engine.dispose(); }
-  sbSkinPreview = { engine:null, scene:null, gun:null, mat:null };
-}
-function sbSkinPreviewWeapon(){
-  if(!sbSkinPreview.scene) return;
-  const scene = sbSkinPreview.scene;
-  if(sbSkinPreview.gun){ sbSkinPreview.gun.dispose(); sbSkinPreview.gun=null; }
-  const id = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  const skinId = window.sbPreviewSkinId || sbGetEquippedSkin(id);
-  const skin = (skinId && skinId!=='custom' && SB_SKINS[skinId]) ? SB_SKINS[skinId] : SB_SKINS.default;
-
-  if(SB_MESH_DATA[id]){
-    const skinColor = (skinId && skinId!=='custom' && SB_SKINS[skinId]) ? SB_SKINS[skinId].body : null;
-    const mesh = sbCreateWeaponMesh(scene, id, skinColor);
-    if(mesh){
-      const root = sbPlaceWeaponMesh(mesh, id, true);
-      sbSkinPreview.gun = root;
-      sbUpdateSkinActionButtons();
-      return;
-    }
-  }
-  const built = sbBuildPreviewGun(scene, id, skinId);
-  sbSkinPreview.gun = built.root;
-  sbSkinPreview.mat = built.bodyMat;
-  sbUpdateSkinActionButtons();
-}
-
-
-function sbPreviewSkin(skinId){
-  window.sbPreviewSkinId = skinId;
-  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  const sk = skinId==='custom' ? { name:'Свой скин', price:0 } : SB_SKINS[skinId];
-  const info = document.getElementById('sbSkinSelectedInfo');
-  if(info && sk){
-    const owned = skinId==='custom' ? !!sbLoadSkinState().customTex : sbOwnSkin(skinId);
-    info.innerHTML = `<b>${sk.name}</b> · ${owned ? 'уже есть' : ('$'+sk.price)} · оружие: ${weaponId.toUpperCase()}`;
-  }
-  sbSkinPreviewWeapon();
-  sbRenderSkinGrid();
-}
-
-function sbUpdateSkinActionButtons(){
-  const skinId = window.sbPreviewSkinId;
-  const buy = document.getElementById('sbSkinBuyBtn');
-  const eq = document.getElementById('sbSkinEquipBtn');
-  if(!skinId){ if(buy) buy.style.display='none'; if(eq) eq.style.display='none'; return; }
-  if(skinId==='custom'){
-    const has = !!sbLoadSkinState().customTex;
-    if(buy) buy.style.display='none';
-    if(eq){ eq.style.display = has ? 'block' : 'none'; eq.textContent='Надеть свой скин'; }
-    return;
-  }
-  const sk = SB_SKINS[skinId]; if(!sk) return;
-  const owned = sbOwnSkin(skinId);
-  if(buy){
-    buy.style.display = (!owned && sk.price>0) ? 'block' : 'none';
-    buy.textContent = 'Купить за $' + sk.price;
-  }
-  if(eq){
-    eq.style.display = owned || sk.price===0 ? 'block' : 'none';
-    eq.textContent = 'Надеть';
-  }
-}
-
-function sbRenderSkinGrid(){
-  const grid=document.getElementById('sbSkinGrid'); if(!grid) return;
-  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  const eq = sbGetEquippedSkin(weaponId);
-  const preview = window.sbPreviewSkinId;
-  grid.innerHTML = Object.values(SB_SKINS).map(sk=>{
-    const owned = sbOwnSkin(sk.id);
-    const active = (preview===sk.id || (!preview && eq===sk.id)) ? 'active' : '';
-    const mark = owned || sk.price===0 ? '✓' : ('$'+sk.price);
-    return `<button type="button" class="sb-skin-btn ${active}" onclick="sbPreviewSkin('${sk.id}')">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgb(${sk.body.map(x=>Math.round(x*255)).join(',')});margin-right:6px;"></span>
-      ${sk.name} <span class="price">${mark}</span>
-    </button>`;
-  }).join('');
-  const st=sbLoadSkinState();
-  if(st.customTex){
-    grid.innerHTML += `<button type="button" class="sb-skin-btn ${preview==='custom'?'active':''}" onclick="sbPreviewSkin('custom')">🎨 Свой скин <span class="price">✓</span></button>`;
-  }
-}
-
-async function sbBuySelectedSkin(){
-  const skinId = window.sbPreviewSkinId;
-  if(!skinId || skinId==='custom') return;
-  const sk = SB_SKINS[skinId]; if(!sk || sk.price<=0) return;
-  if(sbOwnSkin(skinId)){ alert('Уже куплено'); return; }
+function sbTryJoinLiveMatch(payload){
+  if(sbIsHost) return;
+  if(sbOnlineStarted || sbGameActive) return;
+  const map = (payload && payload.map) || sbCurrentMap || 'dust';
+  console.log('BS guest joining live match', map);
   try{
-    const ok = await sbSiteSpend(sk.price);
-    if(!ok){ alert('Недостаточно денег сайта (нужно $'+sk.price+')'); return; }
-    const st = sbLoadSkinState();
-    st.owned = st.owned || [];
-    st.owned.push(skinId);
-    sbSaveSkinState(st);
-    sbUpdateSkinActionButtons();
-    sbRenderSkinGrid();
-    alert('Скин «'+sk.name+'» куплен! Нажми «Надеть».');
-  }catch(e){ alert('Ошибка: '+e.message); }
-}
-
-function sbEquipSelectedSkin(){
-  const skinId = window.sbPreviewSkinId;
-  if(!skinId) return;
-  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  const st = sbLoadSkinState();
-  st.eq = st.eq || {};
-  if(skinId==='custom'){
-    if(!st.customTex){ alert('Нет своего скина'); return; }
-  } else {
-    const sk = SB_SKINS[skinId];
-    if(!sk) return;
-    if(sk.price>0 && !sbOwnSkin(skinId)){ alert('Сначала купи скин'); return; }
-  }
-  st.eq[weaponId] = skinId;
-  sbSaveSkinState(st);
-  if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
-  sbSkinPreviewWeapon();
-  sbRenderSkinGrid();
-}
-
-async function sbSiteSpend(amount){
-  // use shared horse_balances
-  if(typeof horseBalance === 'undefined'){
-    try{
-      const {data} = await sb.from('horse_balances').select('balance').eq('user_id', currentUser.id).maybeSingle();
-      window.horseBalance = data ? Number(data.balance) : 0;
-    }catch(e){ window.horseBalance = 0; }
-  }
-  if(horseBalance < amount) return false;
-  const newBal = horseBalance - amount;
-  const {error} = await sb.from('horse_balances').update({balance:newBal}).eq('user_id', currentUser.id);
-  if(error) throw error;
-  horseBalance = newBal;
-  const el = document.getElementById('horseBalanceLabel');
-  if(el) el.textContent = (typeof fmtMoney==='function'?fmtMoney(horseBalance):('$'+horseBalance));
-  return true;
-}
-
-function sbOpenPaint(){
-  const panel = document.getElementById('sbPaintPanel');
-  panel.style.display = panel.style.display==='none'?'block':'none';
-  if(panel.style.display==='block') sbInitPaint();
-}
-function sbInitPaint(){
-  const canvas = document.getElementById('sbPaintCanvas');
-  if(!canvas || canvas._inited) return;
-  canvas._inited = true;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#2a2a32';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  let drawing=false;
-  const pos = e=>{
-    const r=canvas.getBoundingClientRect();
-    const x=(e.clientX||e.touches?.[0]?.clientX)-r.left;
-    const y=(e.clientY||e.touches?.[0]?.clientY)-r.top;
-    return {x:x*(canvas.width/r.width), y:y*(canvas.height/r.height)};
-  };
-  const draw = e=>{
-    if(!drawing) return; e.preventDefault();
-    const p=pos(e); const size=parseInt(document.getElementById('sbPaintSize').value,10)||8;
-    ctx.fillStyle=document.getElementById('sbPaintColor').value;
-    ctx.beginPath(); ctx.arc(p.x,p.y,size/2,0,Math.PI*2); ctx.fill();
-  };
-  canvas.addEventListener('mousedown', e=>{ drawing=true; draw(e); });
-  canvas.addEventListener('mousemove', draw);
-  window.addEventListener('mouseup', ()=> drawing=false);
-  canvas.addEventListener('touchstart', e=>{ drawing=true; draw(e); }, {passive:false});
-  canvas.addEventListener('touchmove', draw, {passive:false});
-  canvas.addEventListener('touchend', ()=> drawing=false);
-}
-function sbPaintClear(){
-  const canvas=document.getElementById('sbPaintCanvas');
-  const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#2a2a32'; ctx.fillRect(0,0,canvas.width,canvas.height);
-}
-async function sbSavePaintSkin(){
-  const st = sbLoadSkinState();
-  const freeUsed = !!st.paintUsedFree;
-  const cost = freeUsed ? 2000 : 0;
-  if(cost>0){
-    try{
-      const ok = await sbSiteSpend(cost);
-      if(!ok){ alert('Нужно $2000 на балансе сайта'); return; }
-    }catch(e){ alert(e.message); return; }
-  } else {
-    st.paintUsedFree = true;
-  }
-  const canvas=document.getElementById('sbPaintCanvas');
-  st.customTex = canvas.toDataURL('image/png');
-  const weaponId = document.getElementById('sbSkinWeapon')?.value || 'ak47';
-  st.eq = st.eq || {};
-  st.eq[weaponId] = 'custom';
-  sbSaveSkinState(st);
-  if(sbPlayer) sbApplyWeaponModel(sbPlayer.vm, sbPlayer.currentWeaponId);
-  sbSkinPreviewWeapon();
-  sbRenderSkinGrid();
-  alert(cost===0 ? 'Свой скин сохранён (бесплатно первый раз)!' : 'Свой скин куплен за $2000');
-}
-
-async function sbLoadCustomMaps(){
-  try{
-    const { data, error } = await sb.from('blockstrike_maps').select('map_key, data');
-    if(error){ console.warn('blockstrike_maps', error.message); return; }
-    (data||[]).forEach(row=>{
-      const d = sbNormalizeMapData(row.data);
-      sbMapCustomCache[row.map_key] = d;
-      if(d.name) sbMapNames[row.map_key] = d.name;
-    });
-    sbRefreshMapSelects();
-  }catch(e){ console.warn(e); }
-}
-function sbRefreshMapSelects(){
-  ['sbMapSelect','sbOnlineMapSelect','sbEditMapKey'].forEach(id=>{
-    const sel=document.getElementById(id); if(!sel) return;
-    const cur=sel.value;
-    // keep existing options keys, update labels
-    Array.from(sel.options).forEach(opt=>{
-      if(sbMapNames[opt.value]) opt.textContent = sbMapNames[opt.value];
-    });
-    if(cur) sel.value=cur;
-  });
-  const nameInp=document.getElementById('sbEditMapName');
-  if(nameInp){
-    const key=document.getElementById('sbEditMapKey')?.value||'dust';
-    nameInp.value = sbMapNames[key] || key;
-  }
-}
-function sbEditorRenameMap(){
-  if(!sbIsAdmin()) return;
-  const key=document.getElementById('sbEditMapKey')?.value||sbCurrentMap;
-  const name=(document.getElementById('sbEditMapName')?.value||'').trim();
-  if(!name){ alert('Введи название'); return; }
-  sbMapNames[key]=name;
-  const pack=sbNormalizeMapData(sbMapCustomCache[key]);
-  pack.name=name;
-  sbMapCustomCache[key]=pack;
-  sbRefreshMapSelects();
-  alert('Название «'+name+'» будет сохранено вместе с картой (кнопка Сохранить всем).');
-}
-
-function sbShapeMesh(scene, b){
-  const col = b.col || [0.5,0.5,0.5];
-  const mat = new BABYLON.StandardMaterial('cm'+Math.random(), scene);
-  mat.diffuseColor = new BABYLON.Color3(col[0],col[1],col[2]);
-  let m;
-  const shape = b.shape || 'box';
-  if(shape==='cyl'){
-    m = BABYLON.MeshBuilder.CreateCylinder('c', { height:b.h, diameter:Math.max(b.w,b.d) }, scene);
-  } else if(shape==='sphere'){
-    m = BABYLON.MeshBuilder.CreateSphere('c', { diameter:Math.max(b.w,b.h,b.d) }, scene);
-  } else if(shape==='ramp'){
-    m = BABYLON.MeshBuilder.CreateBox('c', { width:b.w, height:b.h, depth:b.d }, scene);
-    m.rotation.x = -0.4;
-  } else {
-    m = BABYLON.MeshBuilder.CreateBox('c', { width:b.w, height:b.h, depth:b.d }, scene);
-  }
-  m.position.set(b.x, b.y, b.z);
-  if(b.rotY) m.rotation.y = b.rotY;
-  m.material = mat;
-  m.metadata = { custom:true, data:b };
-  return m;
-}
-
-function sbSpawnMarker(scene, x, z, team){
-  const m = BABYLON.MeshBuilder.CreateCylinder('spawn', { height:0.3, diameter:1.6 }, scene);
-  m.position.set(x, 0.2, z);
-  const mat = new BABYLON.StandardMaterial('sm', scene);
-  mat.diffuseColor = team==='CT' ? new BABYLON.Color3(0.25,0.45,0.9) : new BABYLON.Color3(0.95,0.55,0.15);
-  mat.emissiveColor = mat.diffuseColor.scale(0.3);
-  m.material = mat;
-  m.metadata = { spawn:true, team, x, z };
-  return m;
-}
-
-function sbApplyCustomBoxes(scene, mapKey){
-  const data = sbNormalizeMapData(sbMapCustomCache[mapKey]);
-  (data.boxes||[]).forEach(b=> sbShapeMesh(scene, b));
-  (data.spawnsT||[]).forEach(s=> sbSpawnMarker(scene, s.x, s.z, 'T'));
-  (data.spawnsCT||[]).forEach(s=> sbSpawnMarker(scene, s.x, s.z, 'CT'));
-}
-
-function sbEditorSetTool(t){
-  sbEditorTool = t;
-  sbDrag = null;
-  const wrap = document.getElementById('sbCanvasWrap');
-  if(wrap){
-    wrap.classList.add('editor-mode');
-    wrap.style.cursor = t==='delete' ? 'not-allowed' : (t==='move'||t==='rotate' ? 'grab' : 'crosshair');
-  }
-  // keep LMB for tools unless free camera mode
-  try{
-    if(sbEditorCam?.inputs?.attached?.pointers){
-      sbEditorCam.inputs.attached.pointers.buttons = (window.sbEditorViewMode==='free') ? [0,1,2] : [1,2];
-    }
+    const info=document.getElementById('sbLobbyInfo');
+    if(info) info.innerHTML = `Вход в матч на карте <b>${sbMapNames[map]||map}</b>…`;
   }catch(e){}
-  ['place','move','rotate','delete'].forEach(name=>{
-    const el = document.getElementById('sbTool'+name.charAt(0).toUpperCase()+name.slice(1));
-    // ids: sbToolPlace, sbToolMove, sbToolRot, sbToolDel
-  });
-  const map = { place:'sbToolPlace', move:'sbToolMove', rotate:'sbToolRot', delete:'sbToolDel' };
-  Object.keys(map).forEach(k=>{
-    const el=document.getElementById(map[k]);
-    if(el) el.style.outline = (k===t) ? '2px solid #E8A33D' : 'none';
-  });
+  sbBeginOnlineMatch(map);
+  sbUpdateLobbyInfo();
 }
-
-
-function sbEditorHarvestBaseMeshes(){
-  // Turn procedural boxes into custom editable entries (once per edit session if not fullMap yet)
-  const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-  if(pack.fullMap && pack.boxes.length){
-    // already full custom — re-tag meshes
-    sbScene.meshes.forEach(m=>{
-      if(m.name==='b' && !m.metadata){
-        m.metadata = { custom:true, data:{ shape:'box', x:m.position.x, y:m.position.y, z:m.position.z, w:1, h:1, d:1, col:[0.5,0.5,0.5] } };
-      }
-    });
-    return;
-  }
-  const harvested = [];
-  sbScene.meshes.forEach(m=>{
-    if(m.name!=='b') return;
-    if(m.metadata && m.metadata.custom) return;
-    // estimate size from bounding box
-    m.computeWorldMatrix(true);
-    const bi = m.getBoundingInfo().boundingBox;
-    const size = bi.extendSizeWorld;
-    const w = Math.max(0.5, Math.round(size.x*2)*2);
-    const h = Math.max(0.5, Math.round(size.y*2)*2);
-    const d = Math.max(0.5, Math.round(size.z*2)*2);
-    let col = [0.5,0.5,0.5];
-    if(m.material && m.material.diffuseColor){
-      const dc=m.material.diffuseColor; col=[dc.r,dc.g,dc.b];
-    }
-    const b = { shape:'box', x:m.position.x, y:m.position.y, z:m.position.z, w, h, d, col, rotY:m.rotation.y||0 };
-    harvested.push(b);
-    m.metadata = { custom:true, data:b };
-  });
-  // merge: base harvested + existing custom (customs already in scene from apply)
-  // Prefer: if we harvested base, set boxes = harvested only from current scene metadata
-  const all = [];
-  sbScene.meshes.forEach(m=>{
-    if(m.metadata && m.metadata.custom && m.metadata.data) all.push(m.metadata.data);
-  });
-  pack.boxes = all;
-  pack.fullMap = true; // from now on this map is fully data-driven
-  sbMapCustomCache[sbCurrentMap] = pack;
-}
-
-
-function sbEditorViewTop(){
-  if(!sbEditorCam) return;
-  window.sbEditorViewMode = 'top';
-  sbEditorCam.alpha = -Math.PI/2;
-  sbEditorCam.beta = 0.12;
-  sbEditorCam.radius = 55;
-  sbEditorCam.setTarget(new BABYLON.Vector3(0,0,0));
-}
-function sbEditorViewSide(){
-  if(!sbEditorCam) return;
-  window.sbEditorViewMode = 'side';
-  sbEditorCam.alpha = 0;
-  sbEditorCam.beta = Math.PI/2 - 0.15;
-  sbEditorCam.radius = 45;
-  sbEditorCam.setTarget(new BABYLON.Vector3(0,2,0));
-}
-function sbEditorViewFree(){
-  if(!sbEditorCam) return;
-  window.sbEditorViewMode = 'free';
-  sbEditorCam.alpha = -Math.PI/3;
-  sbEditorCam.beta = 0.9;
-  sbEditorCam.radius = 40;
-  sbEditorCam.setTarget(new BABYLON.Vector3(0,1,0));
-  // In free mode allow LMB rotate too for convenience
-  try {
-    if(sbEditorCam.inputs?.attached?.pointers){
-      sbEditorCam.inputs.attached.pointers.buttons = [0, 1, 2];
-    }
-  } catch(e){}
-}
-
-function sbEnterEditor(){
-  if(!sbIsAdmin()){ alert('Редактор только для Abdrakhman'); return; }
-  sbEnsureEngine();
-  sbEditorMode = true;
-  sbGameActive = false;
-  sbDrag = null;
-  document.exitPointerLock();
-  sbShowGameUI(false);
-  document.getElementById('sbMainMenu')?.classList.add('hidden');
-  document.getElementById('sbEditorBar')?.classList.add('show');
-  const wrap = document.getElementById('sbCanvasWrap');
-  if(wrap){ wrap.classList.add('editor-mode'); wrap.style.cursor='crosshair'; }
-
-  const key = document.getElementById('sbEditMapKey')?.value || 'dust';
-  sbCurrentMap = key;
-  sbCreateMap(sbScene, key);
-  sbApplyCustomBoxes(sbScene, key);
-  // Convert default map blocks into editable objects (so they can be deleted/moved)
-  sbEditorHarvestBaseMeshes();
-
-  if(sbEditorCam) sbEditorCam.dispose();
-  // Perspective free camera: top by default, can tilt to side and zoom
-  sbEditorCam = new BABYLON.ArcRotateCamera('editCam', -Math.PI/2, 0.15, 55, new BABYLON.Vector3(0,0,0), sbScene);
-  sbEditorCam.mode = BABYLON.Camera.PERSPECTIVE_CAMERA;
-  sbEditorCam.lowerBetaLimit = 0.05;
-  sbEditorCam.upperBetaLimit = Math.PI/2 - 0.05;
-  sbEditorCam.lowerRadiusLimit = 5;
-  sbEditorCam.upperRadiusLimit = 160;
-  sbEditorCam.wheelPrecision = 6;
-  sbEditorCam.panningSensibility = 25;
-  sbEditorCam.angularSensibilityX = 800;
-  sbEditorCam.angularSensibilityY = 800;
-  sbEditorCam.attachControl(sbCanvas, true);
-  // LMB reserved for tools; RMB rotate, MMB pan, wheel zoom
-  try {
-    if(sbEditorCam.inputs?.attached?.pointers){
-      sbEditorCam.inputs.attached.pointers.buttons = [1, 2];
-    }
-  } catch(e){}
-  sbScene.activeCamera = sbEditorCam;
-  window.sbEditorViewMode = 'top';
-  sbEditorSetTool('place');
-
-  if(!sbScene._editorPick){
-    sbScene._editorPick = true;
-
-    sbScene.onPointerObservable.add((pi)=>{
-      if(!sbEditorMode) return;
-
-      // pointer move while dragging
-      if(pi.type === BABYLON.PointerEventTypes.POINTERMOVE && sbDrag){
-        const pick = sbScene.pick(sbScene.pointerX, sbScene.pointerY, m=> m && m.name==='ground');
-        if(!pick || !pick.hit || !pick.pickedPoint) return;
-        const mesh = sbDrag.mesh;
-        if(sbDrag.mode==='move'){
-          const x=Math.round(pick.pickedPoint.x*2)/2;
-          const z=Math.round(pick.pickedPoint.z*2)/2;
-          mesh.position.x = x;
-          mesh.position.z = z;
-          if(mesh.metadata && mesh.metadata.data){
-            mesh.metadata.data.x = x;
-            mesh.metadata.data.z = z;
-            mesh.metadata.data.y = mesh.position.y;
-          }
-          if(mesh.metadata && mesh.metadata.spawn){
-            mesh.metadata.x = x; mesh.metadata.z = z;
-          }
-        } else if(sbDrag.mode==='rotate'){
-          const dx = pick.pickedPoint.x - mesh.position.x;
-          const dz = pick.pickedPoint.z - mesh.position.z;
-          const ang = Math.atan2(dx, dz);
-          mesh.rotation.y = ang;
-          if(mesh.metadata && mesh.metadata.data) mesh.metadata.data.rotY = ang;
-        }
-        return;
-      }
-
-      if(pi.type === BABYLON.PointerEventTypes.POINTERUP){
-        if(sbDrag){
-          // sync spawns array positions
-          if(sbDrag.mesh && sbDrag.mesh.metadata && sbDrag.mesh.metadata.spawn){
-            const meta = sbDrag.mesh.metadata;
-            const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-            const key = meta.team==='CT'?'spawnsCT':'spawnsT';
-            pack[key] = pack[key].map(s=>{
-              if(Math.abs(s.x-sbDrag.originX)<0.01 && Math.abs(s.z-sbDrag.originZ)<0.01) return {x:meta.x,z:meta.z};
-              return s;
-            });
-            sbMapCustomCache[sbCurrentMap]=pack;
-          }
-          sbDrag = null;
-          const wrap = document.getElementById('sbCanvasWrap');
-          if(wrap) wrap.style.cursor = sbEditorTool==='move'||sbEditorTool==='rotate' ? 'grab' : 'crosshair';
-        }
-        return;
-      }
-
-      if(pi.type !== BABYLON.PointerEventTypes.POINTERDOWN) return;
-      // only left button
-      if(pi.event && pi.event.button !== 0) return;
-
-      const pick = pi.pickInfo; if(!pick||!pick.hit) return;
-      const mesh = pick.pickedMesh;
-
-      // DELETE tool — any map object except ground and border walls
-      if(sbEditorTool==='delete'){
-        if(mesh && mesh.name==='ground') return;
-        if(mesh && mesh.metadata && mesh.metadata.custom){
-          const data = mesh.metadata.data;
-          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-          pack.boxes = pack.boxes.filter(b=> b!==data && !(b.x===data.x && b.y===data.y && b.z===data.z && b.w===data.w));
-          pack.fullMap = true;
-          sbMapCustomCache[sbCurrentMap]=pack;
-          mesh.dispose();
-        } else if(mesh && mesh.name==='b'){
-          // base block without metadata yet
-          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-          pack.fullMap = true;
-          mesh.dispose();
-          // re-harvest remaining
-          pack.boxes = [];
-          sbScene.meshes.forEach(m=>{
-            if(m.metadata && m.metadata.custom && m.metadata.data) pack.boxes.push(m.metadata.data);
-            else if(m.name==='b' && m!==mesh){
-              m.computeWorldMatrix(true);
-              const bi=m.getBoundingInfo().boundingBox; const size=bi.extendSizeWorld;
-              const b={shape:'box',x:m.position.x,y:m.position.y,z:m.position.z,w:Math.max(0.5,size.x*2),h:Math.max(0.5,size.y*2),d:Math.max(0.5,size.z*2),col:[0.5,0.5,0.5]};
-              m.metadata={custom:true,data:b}; pack.boxes.push(b);
-            }
-          });
-          sbMapCustomCache[sbCurrentMap]=pack;
-        } else if(mesh && mesh.metadata && mesh.metadata.spawn){
-          const meta = mesh.metadata;
-          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-          const key = meta.team==='CT'?'spawnsCT':'spawnsT';
-          pack[key] = pack[key].filter(s=> !(s.x===meta.x && s.z===meta.z));
-          sbMapCustomCache[sbCurrentMap]=pack;
-          mesh.dispose();
-        }
-        return;
-      }
-
-      // MOVE / ROTATE start drag on custom or spawn
-      if(sbEditorTool==='move' || sbEditorTool==='rotate'){
-        if(mesh && ((mesh.metadata && mesh.metadata.custom) || (mesh.metadata && mesh.metadata.spawn))){
-          sbDrag = {
-            mesh,
-            mode: sbEditorTool,
-            originX: mesh.position.x,
-            originZ: mesh.position.z
-          };
-          const wrap = document.getElementById('sbCanvasWrap');
-          if(wrap) wrap.style.cursor = 'grabbing';
-          // disable camera pan while dragging
-          if(sbEditorCam) sbEditorCam.detachControl();
-          setTimeout(()=>{ /* reattach on up */ }, 0);
-        }
-        return;
-      }
-
-      // PLACE / SPAWN on ground
-      if(mesh && mesh.name==='ground'){
-        const p = pick.pickedPoint;
-        const x=Math.round(p.x*2)/2, z=Math.round(p.z*2)/2;
-        if(sbEditorTool==='spawn_t' || sbEditorTool==='spawn_ct'){
-          const team = sbEditorTool==='spawn_ct'?'CT':'T';
-          const pack = sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-          const key = team==='CT'?'spawnsCT':'spawnsT';
-          pack[key].push({x,z});
-          sbMapCustomCache[sbCurrentMap]=pack;
-          sbSpawnMarker(sbScene, x, z, team);
-        } else if(sbEditorTool==='place'){
-          sbEditorAddBoxAt(x, z);
-        }
-      }
-    });
-
-    // reattach camera after drag
-    window.addEventListener('pointerup', ()=>{
-      if(sbEditorMode && sbEditorCam && sbGameActive===false){
-        try{ sbEditorCam.attachControl(sbCanvas, true); if(sbEditorCam.inputs?.attached?.pointers) sbEditorCam.inputs.attached.pointers.buttons=[1,2]; }catch(e){}
-      }
-    });
-  }
-}
-
-function sbEditorAddBoxAt(x,z){
-  const w=parseFloat(document.getElementById('sbEditW')?.value||3);
-  const h=parseFloat(document.getElementById('sbEditH')?.value||2);
-  const d=parseFloat(document.getElementById('sbEditD')?.value||3);
-  const shape=document.getElementById('sbEditShape')?.value||'box';
-  const col=[0.4+Math.random()*0.4,0.4+Math.random()*0.4,0.4+Math.random()*0.4];
-  const b={ shape, x, y:h/2, z, w, h, d, col };
-  const pack=sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-  pack.boxes.push(b);
-  sbMapCustomCache[sbCurrentMap]=pack;
-  sbShapeMesh(sbScene, b);
-}
-function sbEditorAddBox(){ // place in front of camera center
-  sbEditorAddBoxAt(0,0);
-}
-function sbEditorUndo(){
-  const pack=sbNormalizeMapData(sbMapCustomCache[sbCurrentMap]);
-  pack.boxes.pop();
-  sbMapCustomCache[sbCurrentMap]=pack;
-  sbCreateMap(sbScene, sbCurrentMap);
-  sbApplyCustomBoxes(sbScene, sbCurrentMap);
-}
-function sbEditorClear(){
-  if(!confirm('Удалить ВСЕ объекты на карте (включая исходные)? Останутся только пол и стены.')) return;
-  sbMapCustomCache[sbCurrentMap]={ boxes:[], spawnsT:[], spawnsCT:[], fullMap:true };
-  sbCreateMap(sbScene, sbCurrentMap);
-  // no custom boxes
-}
-async function sbEditorSave(){
-  if(!sbIsAdmin()) return;
-  const key = document.getElementById('sbEditMapKey')?.value || sbCurrentMap;
-  const data = sbNormalizeMapData(sbMapCustomCache[key]);
-  data.fullMap = true;
-  data.name = sbMapNames[key] || (document.getElementById('sbEditMapName')?.value) || key;
-  sbMapNames[key]=data.name;
-  // refresh boxes from live scene meshes
-  data.boxes = [];
-  sbScene.meshes.forEach(m=>{
-    if(m.metadata && m.metadata.custom && m.metadata.data){
-      const d=m.metadata.data;
-      d.x=m.position.x; d.y=m.position.y; d.z=m.position.z; d.rotY=m.rotation.y||0;
-      data.boxes.push(d);
-    }
-  });
-  // spawns from markers
-  data.spawnsT=[]; data.spawnsCT=[];
-  sbScene.meshes.forEach(m=>{
-    if(m.metadata && m.metadata.spawn){
-      const s={x:m.position.x, z:m.position.z};
-      if(m.metadata.team==='CT') data.spawnsCT.push(s); else data.spawnsT.push(s);
-    }
-  });
-  sbMapCustomCache[key]=data;
-  try{
-    const { error } = await sb.from('blockstrike_maps').upsert({
-      map_key: key, data, updated_by: currentUser.id, updated_at: new Date().toISOString()
-    }, { onConflict:'map_key' });
-    if(error) throw error;
-    alert('Карта «'+key+'» сохранена для всех.');
-  }catch(e){
-    alert('Ошибка сохранения: '+e.message+'\n\nНужна таблица blockstrike_maps (см. инструкцию).');
-  }
-}
-function sbEditorExit(){
-  sbEditorMode=false;
-  sbDrag=null;
-  document.getElementById('sbEditorBar')?.classList.remove('show');
-  document.getElementById('sbMainMenu')?.classList.remove('hidden');
-  const wrap=document.getElementById('sbCanvasWrap');
-  if(wrap){ wrap.classList.remove('editor-mode'); wrap.style.cursor=''; }
-  if(sbEditorCam){ sbEditorCam.dispose(); sbEditorCam=null; }
-  if(sbPlayer && sbPlayer.camera) sbScene.activeCamera = sbPlayer.camera;
-}
-
-document.addEventListener('change', e=>{
-  if(e.target && e.target.id==='sbEditMapKey'){
-    const key = e.target.value;
-    const nameInp=document.getElementById('sbEditMapName');
-    if(nameInp) nameInp.value = sbMapNames[key] || key;
-    if(sbEditorMode){
-      sbCurrentMap = key;
-      sbCreateMap(sbScene, sbCurrentMap);
-      sbApplyCustomBoxes(sbScene, sbCurrentMap);
-      if(typeof sbEditorHarvestBaseMeshes==='function') sbEditorHarvestBaseMeshes();
-    }
-  }
-});
-
-// Apply custom texture in viewmodel
-const _sbApplyWeaponModel = sbApplyWeaponModel;
-sbApplyWeaponModel = function(vm, weaponId){
-  _sbApplyWeaponModel(vm, weaponId);
-  const st = sbLoadSkinState();
-  const eq = sbGetEquippedSkin(weaponId);
-  if(eq==='custom' && st.customTex && vm.gunMat){
-    try{
-      const tex = new BABYLON.Texture(st.customTex, vm.gunMat.getScene());
-      vm.gunMat.diffuseTexture = tex;
-    }catch(e){}
-  } else if(vm.gunMat){
-    vm.gunMat.diffuseTexture = null;
-  }
-};
-
-// Use map spawns if defined
-const _sbMapSpawns = sbMapSpawns;
-sbMapSpawns = function(map, team){
-  team = team || sbTeam || 'T';
-  const data = sbNormalizeMapData(sbMapCustomCache[map]);
-  if(team==='CT' && data.spawnsCT && data.spawnsCT.length){
-    return data.spawnsCT.map(s=>[s.x, s.z, Math.PI]);
-  }
-  if(team==='T' && data.spawnsT && data.spawnsT.length){
-    return data.spawnsT.map(s=>[s.x, s.z, 0]);
-  }
-  // fallback: if only one side defined, use it
-  if(data.spawnsCT && data.spawnsCT.length && team==='CT') return data.spawnsCT.map(s=>[s.x,s.z,Math.PI]);
-  if(data.spawnsT && data.spawnsT.length && team==='T') return data.spawnsT.map(s=>[s.x,s.z,0]);
-  return _sbMapSpawns(map, team);
-};
 
 function initSandboxGame(){
   sbEnsureEngine();
