@@ -272,6 +272,29 @@
   .race-row:last-child{border-bottom:none;}
   .race-row .time{color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11.5px; width:100px; flex-shrink:0;}
 
+
+  /* ---- MONEY DROP ---- */
+  .md-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-weight:600;font-size:14px;}
+  .md-bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:14px;}
+  .md-bar i{display:block;height:100%;background:var(--sage);transition:width .4s;}
+  .md-q{font-size:18px;font-weight:600;margin:6px 0 4px;}
+  .md-hint{color:var(--muted);font-size:13px;margin-bottom:12px;}
+  .md-opt{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;transition:opacity .6s,transform .6s;}
+  .md-opt .nm{font-weight:600;margin-bottom:8px;}
+  .md-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .md-row input{flex:1;min-width:110px;font-size:16px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);}
+  .md-row button,.md-main{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;}
+  .md-row button:disabled,.md-main:disabled{opacity:.45;cursor:not-allowed;}
+  .md-main{background:var(--ink);color:#fff;border:none;width:100%;padding:13px;font-size:15px;font-weight:600;margin-top:6px;}
+  .md-opt.gone{opacity:.4;transform:scale(.98);}
+  .md-opt.gone .nm{text-decoration:line-through;}
+  .md-opt.win{border-color:var(--sage);background:rgba(92,131,116,.12);}
+  .md-opt.lose{border-color:var(--rust);background:rgba(178,58,72,.1);}
+  .md-res{font-size:13px;margin-top:6px;font-weight:600;}
+  .md-left{font-size:15px;margin:6px 0 10px;font-weight:600;}
+  .md-left.zero{color:var(--sage);}
+  .md-big{font-size:34px;font-weight:700;margin:10px 0;}
+
   /* ---- BLACKJACK ---- */
   .bj-rules{font-size:12px; color:var(--muted); margin-top:12px; border-top:1px dashed var(--line); padding-top:10px; line-height:1.5;}
   .bj-table{
@@ -621,6 +644,7 @@
     <button class="tab" data-tab="hangman">Виселица 🎯</button>
     <button class="tab" data-tab="horses">Скачки 🐎</button>
     <button class="tab" data-tab="blackjack">Блэкджек 🃏</button>
+    <button class="tab" data-tab="moneydrop">Money Drop 💰</button>
     <button class="tab" data-tab="distance">Расстояния 🌍</button>
     <button class="tab" data-tab="sandbox">BlockStrike 🧱</button>
   </div>
@@ -711,6 +735,20 @@
       <div class="card" style="margin-top:16px;">
         <h3 style="font-size:15px; margin-bottom:14px;">📜 История игр</h3>
         <div id="bjHistoryList"></div>
+      </div>
+    </div>
+
+    <!-- MONEY DROP -->
+    <div class="panel" id="panel-moneydrop">
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="font-size:15px;margin-bottom:8px;">💰 Money Drop</h3>
+        <div class="bj-rules" style="border-top:none;margin-top:0;padding-top:0;">Тебе дают $1 000 000 и 10 раундов. Раунды 1–5: 4 варианта, 2 верных. Раунды 6–9: 3 варианта, 1 верный. Раунд 10: 2 варианта, 1 верный. В каждом раунде нужно разложить ВСЕ деньги по вариантам. Неверные варианты исчезают по одному вместе с деньгами. Всё, что осталось в конце, зачисляется на твой баланс.</div>
+        <div style="margin-top:10px;">Твой баланс: <span class="mono horse-balance" id="mdBalanceLabel">$0</span></div>
+      </div>
+      <div class="card">
+        <div class="md-top"><span id="mdRnd">Раунд 1/10</span><span id="mdBank">$1 000 000</span></div>
+        <div class="md-bar"><i id="mdProg" style="width:0"></i></div>
+        <div id="mdGame"></div>
       </div>
     </div>
 
@@ -5280,6 +5318,114 @@ function initSandboxGame(){
   sbLoadCustomMaps();
 }
 
+
+/* ============ MONEY DROP ============ */
+const MD_Q=[
+{q:"Какие из этих стран имеют сухопутную границу с Казахстаном?",o:[["Китай",1],["Узбекистан",1],["Монголия",0],["Иран",0]]},
+{q:"Какие из этих планет имеют кольца?",o:[["Сатурн",1],["Уран",1],["Марс",0],["Венера",0]]},
+{q:"Какие из этих животных — млекопитающие?",o:[["Дельфин",1],["Летучая мышь",1],["Акула",0],["Пингвин",0]]},
+{q:"Какие из этих городов — столицы государств?",o:[["Анкара",1],["Канберра",1],["Стамбул",0],["Сидней",0]]},
+{q:"Какие из этих химических элементов — металлы?",o:[["Железо",1],["Ртуть",1],["Азот",0],["Сера",0]]},
+{q:"Какая река самая длинная в Европе?",o:[["Волга",1],["Дунай",0],["Рейн",0]]},
+{q:"Сколько хромосом у человека?",o:[["46",1],["48",0],["44",0]]},
+{q:"Кто автор романа-эпопеи «Путь Абая»?",o:[["Мухтар Ауэзов",1],["Абай Кунанбаев",0],["Ильяс Джансугуров",0]]},
+{q:"Какой химический символ у золота?",o:[["Au",1],["Ag",0],["Go",0]]},
+{q:"Какое озеро самое глубокое в мире?",o:[["Байкал",1],["Танганьика",0]]}
+];
+const MD_START=1000000;
+let mdRound=0, mdBank=MD_START, mdAlloc=[], mdOpts=[], mdLocked=false, mdInited=false;
+const mdEl=id=>document.getElementById(id);
+function mdShuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function mdBalance(){ const e=mdEl('mdBalanceLabel'); if(e) e.textContent=fmtMoney(horseBalance); }
+async function initMoneyDrop(){
+  mdBalance();
+  try{ await refreshMyBalance(); mdBalance(); }catch(e){}
+  if(!mdInited){ mdInited=true; mdStart(); }
+}
+function mdStart(){ mdRound=0; mdBank=MD_START; mdNewRound(); }
+function mdHead(){
+  mdEl('mdRnd').textContent='Раунд '+(Math.min(mdRound,9)+1)+'/10';
+  mdEl('mdBank').textContent=fmtMoney(mdBank);
+  mdEl('mdProg').style.width=(mdRound/10*100)+'%';
+}
+function mdSum(){ return mdAlloc.reduce((a,b)=>a+b,0); }
+function mdRest(){ return mdBank-mdSum(); }
+function mdNewRound(){
+  mdLocked=false; mdHead();
+  const d=MD_Q[mdRound]; mdOpts=mdShuffle(d.o); mdAlloc=mdOpts.map(()=>0);
+  const nc=mdOpts.filter(o=>o[1]).length;
+  let h=`<div class="md-q">${d.q}</div><div class="md-hint">${mdOpts.length} варианта, верных: ${nc}. Распредели все деньги.</div>`;
+  mdOpts.forEach((o,i)=>{
+    h+=`<div class="md-opt" id="mdo${i}"><div class="nm">${'ABCD'[i]}. ${o[0]}</div><div class="md-row">
+      <input type="number" inputmode="numeric" min="0" step="10000" id="mdin${i}" value="0">
+      <button data-a="${i}" data-v="10000">+10к</button><button data-a="${i}" data-v="100000">+100к</button>
+      <button data-a="${i}" data-v="all">Всё</button><button data-a="${i}" data-v="clr">0</button></div>
+      <div class="md-res" id="mdr${i}"></div></div>`;
+  });
+  h+=`<div class="md-left" id="mdLeft"></div><button class="md-main" id="mdGo">Зафиксировать ставки</button>`;
+  mdEl('mdGame').innerHTML=h;
+  mdOpts.forEach((o,i)=>mdEl('mdin'+i).addEventListener('input',function(){mdSet(i,parseInt(this.value)||0,true);}));
+  mdEl('mdGame').querySelectorAll('button[data-a]').forEach(b=>b.addEventListener('click',()=>{
+    const i=+b.dataset.a, v=b.dataset.v;
+    if(v==='all') mdSet(i,mdAlloc[i]+mdRest()); else if(v==='clr') mdSet(i,0); else mdSet(i,mdAlloc[i]+(+v));
+  }));
+  mdEl('mdGo').addEventListener('click',mdLock);
+  mdUpd();
+}
+function mdSet(i,v,keep){
+  if(mdLocked) return;
+  const other=mdSum()-mdAlloc[i];
+  v=Math.max(0,Math.min(v,mdBank-other));
+  mdAlloc[i]=v;
+  const inp=mdEl('mdin'+i);
+  if(!keep || parseInt(inp.value)!==v) inp.value=v;
+  mdUpd();
+}
+function mdUpd(){
+  const r=mdRest();
+  mdEl('mdLeft').textContent='Осталось распределить: '+fmtMoney(r);
+  mdEl('mdLeft').className='md-left'+(r===0?' zero':'');
+  mdEl('mdGo').disabled=r!==0;
+}
+function mdLock(){
+  if(mdRest()!==0||mdLocked) return;
+  mdLocked=true;
+  mdEl('mdGame').querySelectorAll('input,button').forEach(e=>e.disabled=true);
+  mdEl('mdLeft').textContent='Неверные варианты исчезают…';
+  const wrong=mdShuffle(mdOpts.map((o,i)=>o[1]?-1:i).filter(i=>i>=0));
+  let t=900;
+  wrong.forEach(i=>{
+    setTimeout(()=>{
+      mdEl('mdo'+i).classList.add('gone','lose');
+      const r=mdEl('mdr'+i); r.style.color='var(--rust)';
+      r.textContent=mdAlloc[i]>0?'❌ Сгорело '+fmtMoney(mdAlloc[i]):'❌ Неверно';
+    },t); t+=1200;
+  });
+  setTimeout(mdFinishRound,t);
+}
+function mdFinishRound(){
+  let keep=0;
+  mdOpts.forEach((o,i)=>{ if(o[1]){ keep+=mdAlloc[i]; mdEl('mdo'+i).classList.add('win');
+    const r=mdEl('mdr'+i); r.style.color='var(--sage)'; r.textContent='✅ Верно. Сохранено '+fmtMoney(mdAlloc[i]); }});
+  const lost=mdBank-keep; mdBank=keep; mdHead();
+  mdEl('mdLeft').textContent='Потеряно: '+fmtMoney(lost)+'. Осталось: '+fmtMoney(mdBank);
+  const last=mdRound===9, over=mdBank===0;
+  const b=document.createElement('button'); b.className='md-main';
+  b.textContent=over?'Результат':(last?'Забрать выигрыш':'Следующий раунд');
+  b.onclick=()=>{ if(over||last) mdEnd(); else { mdRound++; mdNewRound(); } };
+  mdEl('mdGame').appendChild(b);
+}
+async function mdEnd(){
+  const prize=mdBank;
+  mdRound=10; mdHead();
+  mdEl('mdGame').innerHTML=`<div style="text-align:center;padding:16px 0;"><div>Итог игры</div><div class="md-big">${fmtMoney(prize)}</div><div class="md-hint" id="mdEndNote">Зачисляю на баланс…</div><button class="md-main" id="mdAgain" disabled>Играть снова</button></div>`;
+  let ok=true;
+  if(prize>0){ try{ await creditBalance(currentUser.id, prize); }catch(e){ ok=false; console.error(e); } }
+  mdBalance();
+  mdEl('mdEndNote').textContent = ok ? (prize>0 ? Math.round(prize/MD_START*100)+'% от миллиона зачислено на твой баланс.' : 'Все деньги сгорели. Попробуй ещё раз!') : 'Не удалось зачислить деньги, проверь соединение.';
+  const again=mdEl('mdAgain'); again.disabled=false; again.onclick=mdStart;
+}
+
 function initApp(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
@@ -5288,6 +5434,7 @@ function initApp(){
       t.classList.add('active');
       document.getElementById('panel-'+t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='distance'){ dgRenderMap(); }
+      if(t.dataset.tab==='moneydrop'){ initMoneyDrop(); }
       if(t.dataset.tab==='sandbox'){ initSandboxGame(); setTimeout(()=> sbEngine?.resize(), 50); }
     };
   });
